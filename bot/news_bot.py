@@ -20,6 +20,7 @@ import logging
 import os
 import re
 import sys
+import threading
 import time
 import tomllib
 from datetime import datetime, timedelta, timezone
@@ -486,7 +487,8 @@ def durchlauf(cfg: dict, state: dict, test: bool = False) -> str:
     neue: list[dict] = []
     schon_im_lauf: set[str] = set()
     fehlerhaft = 0
-    for quelle in quellen:
+    for nr, quelle in enumerate(quellen):
+        setze_pruefung(nr, len(quellen))
         try:
             feed_url = state["feeds"].get(quelle) or finde_feed(quelle)
             state["feeds"][quelle] = feed_url
@@ -554,22 +556,110 @@ def baue_status(cfg: dict, state: dict) -> dict:
         "discord_aktiv": bool(cfg["discord_webhook"]),
         "push_geraete": len(state["push_abos"]),
         "vapid_public_key": webpush.oeffentlicher_schluessel(_vapid_schluessel) if _vapid_schluessel else None,
+        "sync_sekunden": cfg["dashboard"]["sync_sekunden"],
     }
+
+
+# Lebenszeichen: Eine eigene Leitung meldet sich auch während langer Prüfungen beim
+# Dashboard, damit die Seite einen hängenden oder abgestürzten Bot von einem fleißigen
+# unterscheiden kann. Beim Beenden verabschiedet sich der Bot ausdrücklich.
+_puls = {"kontakt": 0.0, "versuch": 0.0, "pruefung": None, "geaendert": False}
+_puls_lock = threading.Lock()
+_erster_sync = True  # nach dem Start schickt der Bot einmal seinen kompletten Stand
+_abgemeldet = False
+
+
+def setze_pruefung(fertig: int | None, gesamt: int = 0) -> None:
+    """fertig=None: keine Prüfung läuft. Sonst Fortschritt für die Seite."""
+    with _puls_lock:
+        neu = None if fertig is None else {"fertig": fertig, "gesamt": gesamt}
+        _puls["geaendert"] = _puls["geaendert"] or (neu is None) != (_puls["pruefung"] is None)
+        _puls["pruefung"] = neu
+
+
+def merke_kontakt() -> None:
+    with _puls_lock:
+        _puls["kontakt"] = time.monotonic()
+
+
+def puls_schleife(cfg: dict) -> None:
+    d = cfg["dashboard"]
+    kopf = {"Authorization": f"Bearer {d['bot_token']}"}
+    leitung = requests.Session()  # eigene Session – requests.Session ist nicht threadsicher
+    leitung.headers["User-Agent"] = USER_AGENT
+    while True:
+        time.sleep(2)
+        with _puls_lock:
+            ruhe = time.monotonic() - max(_puls["kontakt"], _puls["versuch"])
+            if not (_puls["geaendert"] and _puls["pruefung"]) and ruhe < d["sync_sekunden"] + 5:
+                continue
+            _puls["geaendert"], _puls["versuch"] = False, time.monotonic()
+            pruefung = _puls["pruefung"]
+        try:
+            r = leitung.post(f"{d['url']}/bot/puls", json={"pruefung": pruefung}, headers=kopf, timeout=SYNC_TIMEOUT)
+            if r.ok:
+                merke_kontakt()
+        except requests.RequestException:
+            pass  # die Hauptschleife meldet Verbindungsprobleme schon im Log
+
+
+def melde_ende(cfg: dict, grund: str, text: str) -> None:
+    """Sagt dem Dashboard, dass der Bot aufhört – damit dort nicht der alte Stand stehen bleibt."""
+    global _abgemeldet
+    d = cfg["dashboard"]
+    if not d["url"] or _abgemeldet:
+        return
+    _abgemeldet = True
+    try:
+        requests.post(f"{d['url']}/bot/abmelden", json={"grund": grund, "text": text[:300]},
+                      headers={"Authorization": f"Bearer {d['bot_token']}", "User-Agent": USER_AGENT}, timeout=4)
+    except requests.RequestException:
+        pass  # Seite schläft oder kein Netz – sie merkt es dann am fehlenden Lebenszeichen
+
+
+def fange_fenster_schliessen_ab(cfg: dict) -> None:
+    """Windows: Konsolenfenster schließen, Abmelden oder Herunterfahren → noch schnell abmelden.
+
+    Windows lässt dafür etwa 5 Sekunden Zeit. Strg+C läuft weiter über KeyboardInterrupt.
+    """
+    if os.name != "nt":
+        return
+    import ctypes
+
+    def behandle(ereignis: int) -> bool:
+        if ereignis in (2, 5, 6):  # CTRL_CLOSE_EVENT, CTRL_LOGOFF_EVENT, CTRL_SHUTDOWN_EVENT
+            log.info("Fenster wird geschlossen – Bot beendet.")
+            melde_ende(cfg, "beendet", "Konsolenfenster geschlossen oder Windows heruntergefahren.")
+            return True
+        return False
+
+    global _fenster_handler
+    _fenster_handler = ctypes.WINFUNCTYPE(ctypes.c_int, ctypes.c_uint)(behandle)  # Referenz halten!
+    ctypes.windll.kernel32.SetConsoleCtrlHandler(_fenster_handler, True)
+
+
+_fenster_handler = None
 
 
 def synchronisiere(cfg: dict, state: dict) -> list[dict]:
     """Schickt Status/Neues an das Dashboard und holt offene Befehle ab."""
+    global _erster_sync
     d = cfg["dashboard"]
     if not d["url"]:
         return []
     kopf = {"Authorization": f"Bearer {d['bot_token']}"}
-    nutzlast = {
-        "status": baue_status(cfg, state),
-        "artikel": state["sync_artikel"],
-        "fehler": state["sync_fehler"],
-        "erledigt": state["sync_erledigt"][-100:],
-        "snapshot": False,
-    }
+    if _erster_sync:
+        # Kompletter Stand statt nur Neues – so übernimmt die Seite auch einen geleerten Bot.
+        nutzlast = {"status": baue_status(cfg, state), "artikel": state["verlauf"],
+                    "fehler": state["fehler_verlauf"], "erledigt": state["sync_erledigt"][-100:], "snapshot": True}
+    else:
+        nutzlast = {
+            "status": baue_status(cfg, state),
+            "artikel": state["sync_artikel"],
+            "fehler": state["sync_fehler"],
+            "erledigt": state["sync_erledigt"][-100:],
+            "snapshot": False,
+        }
     befehle: list[dict] = []
     for _ in range(2):
         try:
@@ -588,6 +678,8 @@ def synchronisiere(cfg: dict, state: dict) -> list[dict]:
         except ValueError:  # z. B. Ladeseite, während Render aufwacht
             log.warning("Dashboard liefert noch keine gültige Antwort (wacht vermutlich gerade auf).")
             return befehle
+        merke_kontakt()
+        _erster_sync = False
         state["sync_artikel"], state["sync_fehler"], state["sync_erledigt"] = [], [], []
         befehle += antwort.get("befehle", [])
         geraete_geaendert = bool(antwort.get("push_aenderungen"))
@@ -668,6 +760,8 @@ def pruefen_und_merken(cfg: dict, state: dict) -> None:
     except Exception as e:  # der Bot soll nie wegen eines einzelnen Problems stehen bleiben
         log.exception("Unerwarteter Fehler im Durchlauf")
         ergebnis = f"Fehler: {type(e).__name__}"
+    finally:
+        setze_pruefung(None)
     jetzt = jetzt_utc()
     state["letzter_lauf"] = jetzt.isoformat()
     state["naechster_lauf"] = (jetzt + timedelta(minutes=intervall(cfg, state))).isoformat()
@@ -747,6 +841,9 @@ def main() -> None:
             return
 
         log.info("Bot gestartet. Dashboard: %s", cfg["dashboard"]["url"] or "nicht eingerichtet")
+        if cfg["dashboard"]["url"]:
+            threading.Thread(target=puls_schleife, args=(cfg,), daemon=True, name="puls").start()
+            fange_fenster_schliessen_ab(cfg)
         pause = cfg["dashboard"]["sync_sekunden"] if cfg["dashboard"]["url"] else 30
         while True:
             try:
@@ -760,6 +857,11 @@ def main() -> None:
             time.sleep(pause)
     except KeyboardInterrupt:
         log.info("Bot beendet.")
+        melde_ende(cfg, "beendet", "Der Bot wurde auf dem PC beendet.")
+    except BaseException as e:
+        log.exception("Bot abgestürzt")
+        melde_ende(cfg, "fehler", f"Abgestürzt: {type(e).__name__}: {e}")
+        raise
 
 
 if __name__ == "__main__":

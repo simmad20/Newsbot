@@ -1,9 +1,11 @@
 "use strict";
 
-const AKTUALISIEREN_MS = 15000;
+const AKTUALISIEREN_MS = 10000;
+const PRO_SEITE = 30;
 const ZONE = "Europe/Vienna";
 const fmtZeit = new Intl.DateTimeFormat("de-AT", { timeZone: ZONE, hour: "2-digit", minute: "2-digit" });
 const fmtTag = new Intl.DateTimeFormat("de-AT", { timeZone: ZONE, day: "2-digit", month: "2-digit" });
+const fmtTagLang = new Intl.DateTimeFormat("de-AT", { timeZone: ZONE, weekday: "long", day: "numeric", month: "long" });
 const fmtTagSchluessel = new Intl.DateTimeFormat("en-CA", { timeZone: ZONE });
 
 const AKTIONS_NAMEN = {
@@ -16,6 +18,7 @@ const AKTIONS_NAMEN = {
 const ZUSTAND_NAMEN = { offen: "wartet auf den Bot", abgeholt: "wird ausgeführt" };
 
 let daten = null;
+let sichtbar = PRO_SEITE;  // wie viele Artikel gerade angezeigt werden
 
 // "neu seit deinem letzten Besuch" – merkt sich nur dieser Browser
 const GESEHEN_SCHLUESSEL = "newsbot_gesehen_bis";
@@ -62,7 +65,7 @@ function tagText(datum) {
 }
 
 function vorText(sekunden) {
-  if (sekunden < 90) return "gerade eben";
+  if (sekunden < 60) return `vor ${sekunden} Sek.`;
   const min = Math.round(sekunden / 60);
   if (min < 90) return `vor ${min} Min.`;
   const std = Math.round(min / 60);
@@ -76,6 +79,11 @@ function uhrzeit(iso) {
   return isNaN(d) ? null : fmtZeit.format(d);
 }
 
+function zeitpunktVor(sekunden) {
+  const d = new Date(Date.now() - sekunden * 1000);
+  return `${tagText(d) === "heute" ? "" : `${tagText(d)}, `}${fmtZeit.format(d)}`;
+}
+
 // ---------------------------------------------------------------- Laden
 
 async function laden() {
@@ -86,7 +94,8 @@ async function laden() {
     daten = await r.json();
     zeichneAlles();
   } catch (e) {
-    setzeStatus("offline", "Keine Verbindung", "Die Seite ist gerade nicht erreichbar.", "Neuer Versuch in wenigen Sekunden.", "");
+    setzeStatus("offline", "Seite nicht erreichbar", "Keine Verbindung", "Die Webseite antwortet gerade nicht.",
+      "Sie wacht vermutlich gerade auf, das dauert bis zu einer Minute. Neuer Versuch läuft automatisch.", "");
   }
 }
 
@@ -105,20 +114,24 @@ function zeichneAlles() {
 
 // ---------------------------------------------------------------- Status
 
-function setzeStatus(zustand, titel, zeile1, zeile2, zeile3) {
+function setzeStatus(zustand, titel, kurz, zeile1, zeile2, zeile3) {
   $("status-punkt").className = `punkt punkt-${zustand}`;
+  $("kopf-punkt").className = `punkt punkt-${zustand}`;
+  $("status-karte").dataset.zustand = zustand;
   $("signal-titel").textContent = titel;
+  $("kopf-text").textContent = kurz;
   $("status-zeile1").textContent = zeile1;
   $("status-zeile2").textContent = zeile2;
   $("status-zeile3").textContent = zeile3;
 }
 
 function zeichneSignal() {
-  const { online, letzter_kontakt_vor_sekunden: vor, status } = daten.bot;
+  const { online, letzter_kontakt_vor_sekunden: vor, status, pruefung, beendet } = daten.bot;
   const pauseKnopf = $("pause-knopf");
 
   if (!status) {
-    setzeStatus("warten", "Nicht verbunden", "Starte den Bot auf deinem PC.", "Er meldet sich innerhalb einer Minute hier.", "");
+    setzeStatus("warten", "Nicht verbunden", "Nicht verbunden", "Starte den Bot auf deinem PC.",
+      "Er meldet sich innerhalb einer Minute hier.", "");
     return;
   }
 
@@ -132,21 +145,60 @@ function zeichneSignal() {
   }
 
   const zuletzt = uhrzeit(status.letzter_lauf);
-  const letzte = zuletzt ? `Zuletzt ${zuletzt}: ${status.letztes_ergebnis || "kein Ergebnis"}` : "Noch keine Prüfung seit dem Start";
+  const letzte = zuletzt ? `Letzte Prüfung ${zuletzt}: ${status.letztes_ergebnis || "kein Ergebnis"}` : "Noch keine Prüfung seit dem Start";
   const heute = `Heute (${status.wochentag || "?"}): ${status.quellen_heute === 1 ? "1 Quelle" : `${status.quellen_heute} Quellen`}`;
+  const spaeter = "Befehle werden ausgeführt, sobald der Bot wieder läuft.";
 
-  if (!online) {
-    setzeStatus("offline", "Offline", `Letzter Kontakt ${vorText(vor)}. Ist dein PC an?`,
-      "Befehle werden ausgeführt, sobald der Bot sich wieder meldet.", letzte);
+  if (beendet && beendet.grund === "fehler") {
+    setzeStatus("fehler", "Abgestürzt", "Abgestürzt", `Um ${zeitpunktVor(beendet.vor_sekunden)}: ${beendet.text || "unbekannter Fehler"}`,
+      "Details stehen in newsbot.log auf deinem PC. Starte den Bot neu.", spaeter);
+  } else if (beendet) {
+    setzeStatus("offline", "Beendet", "Beendet", `Der Bot wurde um ${zeitpunktVor(beendet.vor_sekunden)} beendet.`,
+      beendet.text || "", spaeter);
+  } else if (!online) {
+    setzeStatus("fehler", "Keine Verbindung", "Keine Verbindung",
+      `Letztes Lebenszeichen um ${zeitpunktVor(vor)} (${vorText(vor)}).`,
+      "Der Bot ist abgestürzt, wurde hart beendet oder der PC ist aus bzw. offline.", spaeter);
+  } else if (pruefung) {
+    const fortschritt = pruefung.gesamt ? `Quelle ${Math.min(pruefung.fertig + 1, pruefung.gesamt)} von ${pruefung.gesamt}` : "";
+    setzeStatus("pruefen", "Prüft gerade", `Prüft ${pruefung.gesamt ? `${pruefung.fertig + 1}/${pruefung.gesamt}` : "…"}`,
+      fortschritt || "Quellen werden abgerufen.", letzte, heute);
   } else if (status.pausiert) {
-    setzeStatus("pausiert", "Pausiert", "Es wird nicht automatisch geprüft.", letzte, heute);
+    setzeStatus("pausiert", "Pausiert", "Pausiert", "Es wird nicht automatisch geprüft.", letzte, heute);
   } else {
     const naechste = uhrzeit(status.naechster_lauf);
-    setzeStatus("laeuft", "Läuft", naechste ? `Nächste Prüfung um ${naechste}` : "Prüfung läuft", letzte, heute);
+    setzeStatus("laeuft", "Läuft", naechste ? `Läuft · nächste ${naechste}` : "Läuft",
+      naechste ? `Nächste Prüfung um ${naechste}` : "Prüfung startet gleich", letzte, heute);
   }
 }
 
-// ---------------------------------------------------------------- Ticker
+// ---------------------------------------------------------------- Reiter
+
+const REITER = ["artikel", "fehler", "befehle"];
+
+function zeigeReiter(name, fokus = false) {
+  for (const r of REITER) {
+    const aktiv = r === name;
+    const knopf = $(`reiter-${r}`);
+    knopf.setAttribute("aria-selected", String(aktiv));
+    knopf.tabIndex = aktiv ? 0 : -1;
+    $(`bereich-${r}`).hidden = !aktiv;
+    if (aktiv && fokus) knopf.focus();
+  }
+}
+
+REITER.forEach((r, i) => {
+  const knopf = $(`reiter-${r}`);
+  knopf.addEventListener("click", () => zeigeReiter(r));
+  knopf.addEventListener("keydown", (e) => {
+    const schritt = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
+    if (!schritt) return;
+    e.preventDefault();
+    zeigeReiter(REITER[(i + schritt + REITER.length) % REITER.length], true);
+  });
+});
+
+// ---------------------------------------------------------------- Artikel
 
 function zeichneFilterOptionen() {
   fuelleAuswahl($("filter-tag"), "Alle Tags", daten.artikel.flatMap((a) => a.tags));
@@ -160,12 +212,13 @@ function fuelleAuswahl(auswahl, leerText, werte) {
   auswahl.value = eindeutig.includes(aktuell) ? aktuell : "";
 }
 
+const zeitpunkt = (a) => Date.parse(a.datum || a.gefunden_um) || 0;
+
 function gefilterteArtikel() {
   const suche = $("suche").value.trim().toLowerCase();
   const tag = $("filter-tag").value;
   const medium = $("filter-medium").value;
   const nurGemeldet = $("nur-gemeldet").checked;
-  const zeitpunkt = (a) => Date.parse(a.datum || a.gefunden_um) || 0;
   return [...daten.artikel].sort((x, y) => zeitpunkt(y) - zeitpunkt(x)).filter((a) =>
     (!tag || a.tags.includes(tag)) &&
     (!medium || a.medium === medium) &&
@@ -174,37 +227,66 @@ function gefilterteArtikel() {
   );
 }
 
+function trennerText(ms) {
+  const d = new Date(ms);
+  const kurz = tagText(d);
+  const lang = fmtTagLang.format(d);
+  return kurz === "heute" ? `Heute · ${lang}` : kurz === "gestern" ? `Gestern · ${lang}` : lang;
+}
+
 function zeichneTicker() {
   const liste = $("ticker");
+  const mehr = $("mehr");
   const artikel = gefilterteArtikel();
   const gesamt = daten.artikel.length;
   const neuZahl = daten.artikel.filter(istNeu).length;
-  const neuText = neuZahl ? `, davon ${neuZahl} neu` : "";
-  $("anzahl").textContent = !gesamt ? ""
-    : artikel.length === gesamt ? `${gesamt} Artikel${neuText}`
-    : `${artikel.length} von ${gesamt} Artikeln`;
 
-  if (!daten.artikel.length) {
+  $("zahl-artikel").textContent = gesamt ? String(gesamt) : "";
+  document.title = neuZahl ? `(${neuZahl}) News-Bot` : "News-Bot";
+  $("anzahl").textContent = !gesamt ? ""
+    : artikel.length === gesamt ? `${gesamt} Artikel${neuZahl ? `, davon ${neuZahl} neu seit deinem letzten Besuch` : ""}`
+    : `${artikel.length} von ${gesamt} Artikeln passen zu den Filtern`;
+
+  mehr.hidden = true;
+  if (!gesamt) {
     liste.replaceChildren(el("li", { class: "leer" },
       daten.bot.status
-        ? "Noch keine Artikel. Mit „Jetzt prüfen“ startest du sofort eine Prüfung."
+        ? daten.bot.status.quellen_heute
+          ? "Noch keine Artikel. Mit „Jetzt prüfen“ startest du sofort eine Prüfung."
+          : "Noch keine Artikel. Für heute sind in quellen.xlsx keine Quellen eingetragen."
         : "Sobald der Bot verbunden ist, erscheinen hier die gefundenen Artikel."));
     return;
   }
-  const anzahlNeu = daten.artikel.filter(istNeu).length;
-  document.title = anzahlNeu ? `(${anzahlNeu}) News-Bot` : "News-Bot";
   if (!artikel.length) {
     liste.replaceChildren(el("li", { class: "leer" }, "Kein Artikel passt zu diesen Filtern."));
     return;
   }
-  liste.replaceChildren(...artikel.map(artikelZeile));
+
+  const zeilen = [];
+  let letzterTag = null;
+  for (const a of artikel.slice(0, sichtbar)) {
+    const ms = zeitpunkt(a);
+    const tag = fmtTagSchluessel.format(new Date(ms));
+    if (tag !== letzterTag) {
+      zeilen.push(el("li", { class: "trenner" }, trennerText(ms)));
+      letzterTag = tag;
+    }
+    zeilen.push(artikelZeile(a));
+  }
+  liste.replaceChildren(...zeilen);
+
+  const rest = artikel.length - sichtbar;
+  if (rest > 0) {
+    mehr.hidden = false;
+    mehr.textContent = `Weitere ${Math.min(rest, PRO_SEITE)} anzeigen (noch ${rest})`;
+  }
 }
 
 function artikelZeile(a) {
   const d = a.datum ? new Date(a.datum) : null;
   const zeit = d && !isNaN(d)
     ? el("div", { class: "zeit" }, el("div", { class: "zeit-wert" }, fmtZeit.format(d)),
-        el("small", {}, a.datum_art === "aktualisiert" ? `${tagText(d)}, aktual.` : tagText(d)))
+        a.datum_art === "aktualisiert" ? el("small", {}, "aktualisiert") : null)
     : el("div", { class: "zeit" }, el("div", { class: "zeit-wert unsicher" }, "?"), el("small", {}, "Datum unklar"));
 
   const url = sichereUrl(a.url);
@@ -217,7 +299,7 @@ function artikelZeile(a) {
     a.medium, a.autor ? `, ${a.autor}` : "",
     a.gemeldet ? el("span", { class: "gemeldet-hinweis" }, "gemeldet") : "");
 
-  return el("li", {},
+  return el("li", { class: "artikel" },
     zeit,
     el("div", {},
       kopf,
@@ -228,15 +310,23 @@ function artikelZeile(a) {
   );
 }
 
-// ---------------------------------------------------------------- Seitenleiste
+$("mehr").addEventListener("click", () => {
+  sichtbar += PRO_SEITE;
+  zeichneTicker();
+});
+
+// ---------------------------------------------------------------- Fehler & Befehle
 
 function zeichneFehler() {
   const liste = $("fehler");
+  const zahl = $("zahl-fehler");
+  zahl.textContent = daten.fehler.length ? String(daten.fehler.length) : "";
+  zahl.classList.toggle("warnung", daten.fehler.length > 0);
   if (!daten.fehler.length) {
     liste.replaceChildren(el("li", { class: "leise" }, "Keine Fehler. Alle Quellen ließen sich abrufen."));
     return;
   }
-  liste.replaceChildren(...daten.fehler.slice(0, 30).map((f) =>
+  liste.replaceChildren(...daten.fehler.slice(0, 50).map((f) =>
     el("li", { class: "fehler-eintrag" },
       el("span", { class: "wann" }, `${tagText(new Date(f.zeit))}, ${uhrzeit(f.zeit) ?? ""}`),
       el("span", { class: "problem" }, f.grund),
@@ -249,11 +339,12 @@ function zeichneBefehle() {
     liste.replaceChildren(el("li", { class: "leise" }, "Noch keine Befehle gesendet."));
     return;
   }
-  liste.replaceChildren(...daten.befehle.slice(0, 10).map((b) => {
+  liste.replaceChildren(...daten.befehle.map((b) => {
     const name = AKTIONS_NAMEN[b.aktion] + (b.aktion === "intervall" ? ` auf ${b.wert} Min.` : "");
     const stand = b.zustand === "erledigt" ? b.ergebnis : ZUSTAND_NAMEN[b.zustand];
+    const wann = new Date(b.erstellt * 1000);
     return el("li", {},
-      el("span", { class: "wann" }, `${uhrzeit(new Date(b.erstellt * 1000).toISOString())}`),
+      el("span", { class: "wann" }, `${tagText(wann)}, ${fmtZeit.format(wann)}`),
       `${name}: ${stand}`);
   }));
 }
@@ -278,7 +369,7 @@ async function sendeBefehl(knopf) {
     if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || `HTTP ${r.status}`);
     rueck.textContent = daten?.bot.online
       ? `„${AKTIONS_NAMEN[aktion]}“ gesendet. Der Bot führt den Befehl innerhalb von etwa 30 Sekunden aus.`
-      : `„${AKTIONS_NAMEN[aktion]}“ gespeichert. Der Bot ist gerade offline und führt ihn aus, sobald er sich meldet.`;
+      : `„${AKTIONS_NAMEN[aktion]}“ gespeichert. Der Bot läuft gerade nicht und führt ihn aus, sobald er wieder da ist.`;
     laden();
   } catch (e) {
     rueck.textContent = `Befehl wurde nicht gesendet: ${e.message}`;
@@ -418,13 +509,17 @@ document.addEventListener("visibilitychange", () => {
     speichereGesehenBis(neuestesFundDatum());  // beim nächsten Besuch gilt alles bis hierher als gesehen
   } else {
     gesehenBis = ladeGesehenBis() ?? gesehenBis;
-    zeichneTicker();
+    laden();  // nach dem Zurückkommen sofort den echten Stand zeigen
   }
 });
 
 document.querySelectorAll(".steuerung button[data-aktion]").forEach((k) => k.addEventListener("click", () => sendeBefehl(k)));
 ["suche", "filter-tag", "filter-medium", "nur-gemeldet"].forEach((id) =>
-  $(id).addEventListener("input", () => daten && zeichneTicker()));
+  $(id).addEventListener("input", () => {
+    if (!daten) return;
+    sichtbar = PRO_SEITE;  // neue Filter → wieder oben anfangen
+    zeichneTicker();
+  }));
 
 pushVorbereiten().finally(laden);
 setInterval(laden, AKTUALISIEREN_MS);

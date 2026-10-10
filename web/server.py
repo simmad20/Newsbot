@@ -39,7 +39,7 @@ if len(BOT_TOKEN) < 32 or len(PASSWORT) < 10:
 SCHLUESSEL = hashlib.sha256(f"sitzung|{BOT_TOKEN}|{PASSWORT}".encode()).digest()
 COOKIE = "newsbot_sitzung"
 SITZUNG_SEKUNDEN = 14 * 24 * 3600
-ONLINE_GRENZE_SEKUNDEN = 120  # so lange nach dem letzten Kontakt gilt der Bot als online
+ONLINE_PUFFER_SEKUNDEN = 15  # online = letzter Kontakt vor höchstens 2 Sync-Takten + Puffer
 STATIC = Path(__file__).resolve().parent / "static"
 SERVER_START = time.time()
 # Nur echte Push-Dienste der Browser (gleiche Liste prüft auch der Bot)
@@ -84,6 +84,21 @@ class StatusIn(BaseModel):
     discord_aktiv: bool = False
     push_geraete: int = Field(0, ge=0, le=100)
     vapid_public_key: Optional[str] = Field(None, max_length=120, pattern=r"^[A-Za-z0-9_-]+$")
+    sync_sekunden: int = Field(30, ge=10, le=3600)
+
+
+class PruefungIn(BaseModel):
+    fertig: int = Field(ge=0, le=100000)
+    gesamt: int = Field(ge=0, le=100000)
+
+
+class PulsIn(BaseModel):
+    pruefung: Optional[PruefungIn] = None
+
+
+class AbmeldenIn(BaseModel):
+    grund: Literal["beendet", "fehler"]
+    text: Kurz = ""
 
 
 class ErledigtIn(BaseModel):
@@ -151,6 +166,8 @@ class Speicher:
         self.befehle: list[dict] = []
         self.status: dict | None = None
         self.letzter_kontakt: float | None = None
+        self.pruefung: dict | None = None  # Fortschritt einer laufenden Prüfung
+        self.beendet: dict | None = None   # Bot hat sich abgemeldet (beendet oder abgestürzt)
         self.hat_snapshot = False
         self.push_aenderungen: list[dict] = []
 
@@ -165,6 +182,7 @@ class Speicher:
         with self.lock:
             self.letzter_kontakt = time.time()
             self.status = daten.status.model_dump()
+            self.beendet = self.pruefung = None  # der Bot synchronisiert nur zwischen zwei Prüfungen
             if daten.snapshot:
                 self.artikel.clear()
                 self.fehler.clear()
@@ -182,6 +200,17 @@ class Speicher:
                     abzuholen.append({"id": b["id"], "aktion": b["aktion"], "wert": b["wert"]})
             push, self.push_aenderungen = self.push_aenderungen, []
             return {"befehle": abzuholen, "snapshot_noetig": not self.hat_snapshot, "push_aenderungen": push}
+
+    def puls(self, p: PulsIn) -> None:
+        with self.lock:
+            self.letzter_kontakt = time.time()
+            self.beendet = None
+            self.pruefung = p.pruefung.model_dump() if p.pruefung else None
+
+    def abmelden(self, a: AbmeldenIn) -> None:
+        with self.lock:
+            self.beendet = {"grund": a.grund, "text": a.text, "zeit": time.time()}
+            self.pruefung = None
 
     def push(self, p: PushIn) -> None:
         with self.lock:
@@ -211,11 +240,16 @@ class Speicher:
     def ansicht(self) -> dict:
         with self.lock:
             vor = None if self.letzter_kontakt is None else time.time() - self.letzter_kontakt
+            takt = self.status["sync_sekunden"] if self.status else 30
+            online = vor is not None and vor < 2 * takt + ONLINE_PUFFER_SEKUNDEN and self.beendet is None
             return {
                 "bot": {
-                    "online": vor is not None and vor < ONLINE_GRENZE_SEKUNDEN,
+                    "online": online,
                     "letzter_kontakt_vor_sekunden": None if vor is None else round(vor),
                     "status": self.status,
+                    "pruefung": self.pruefung if online else None,
+                    "beendet": None if self.beendet is None else {
+                        **self.beendet, "vor_sekunden": round(time.time() - self.beendet["zeit"])},
                 },
                 "artikel": list(reversed(self.artikel.values())),
                 "fehler": list(reversed(self.fehler)),
@@ -390,3 +424,23 @@ async def bot_sync(request: Request):
     except ValueError as e:
         return JSONResponse({"detail": str(e)[:2000]}, status_code=422)
     return speicher.sync(daten)
+
+
+@app.post("/bot/puls")
+async def bot_puls(request: Request):
+    nur_bot(request)
+    try:
+        speicher.puls(PulsIn.model_validate(await request.json()))
+    except ValueError as e:
+        return JSONResponse({"detail": str(e)[:500]}, status_code=422)
+    return {"ok": True}
+
+
+@app.post("/bot/abmelden")
+async def bot_abmelden(request: Request):
+    nur_bot(request)
+    try:
+        speicher.abmelden(AbmeldenIn.model_validate(await request.json()))
+    except ValueError as e:
+        return JSONResponse({"detail": str(e)[:500]}, status_code=422)
+    return {"ok": True}

@@ -94,14 +94,20 @@ Vorher ein offenes Konsolenfenster mit dem Bot schließen – zweimal gleichzeit
 
 | Bereich | Funktion |
 |---|---|
-| Statusband oben | grün = läuft, orange = pausiert, grau = Bot offline (PC aus?) |
+| Kopfleiste | Status und **Abmelden** – bleibt beim Scrollen immer sichtbar |
+| Statuskarte | grün = läuft bzw. prüft gerade (mit Fortschritt), orange = pausiert, grau = beendet, rot = abgestürzt oder keine Verbindung |
 | Jetzt prüfen | startet sofort eine Prüfung – auch wenn pausiert |
 | Pausieren / Fortsetzen | stoppt bzw. startet das automatische Prüfen |
 | Prüfen alle … | Intervall zwischen 5 Minuten und 2 Stunden |
 | Testbenachrichtigung | schickt eine Probe an alle eingeschalteten Geräte (und Discord, falls eingerichtet) |
 | Benachrichtigungen ein/aus | für das Gerät, auf dem du gerade bist |
-| Artikelliste | Suche, Filter nach Tag und Medium, „nur gemeldete“; **neu** = seit deinem letzten Besuch |
-| Fehler / Befehle | welche Quellen nicht gingen, was mit deinen Befehlen passiert ist |
+| Reiter „Artikel“ | nach Tagen gruppiert, je 30 auf einmal („Weitere anzeigen“); Suche, Filter nach Tag und Medium, „nur gemeldete“; **neu** = seit deinem letzten Besuch |
+| Reiter „Fehler“ / „Befehle“ | welche Quellen nicht gingen, was mit deinen Befehlen passiert ist |
+
+**Woher die Seite weiß, ob der Bot läuft:** Der Bot meldet sich alle 30 Sekunden, auch mitten in
+einer langen Prüfung. Beendest du ihn normal (Strg+C oder Konsolenfenster schließen), meldet er sich
+ab – die Seite zeigt sofort „Beendet“. Stürzt er ab, wird er im Task-Manager beendet oder ist der PC
+aus, zeigt die Seite nach etwa 75 Sekunden ohne Lebenszeichen „Keine Verbindung“.
 
 **Weniger Benachrichtigungen:** `nur_mit_tags = true` in der `config.toml` – dann meldet sich der
 Bot nur bei Artikeln zu deinen Themen. Auf der Seite stehen trotzdem alle neuen Artikel.
@@ -119,6 +125,10 @@ Neustart ohne Fenster: im Task-Manager „pythonw.exe“ beenden und die Verknü
 Autostart-Ordner doppelklicken (oder PC neu starten).
 
 ## Gut zu wissen
+
+- **Neu anfangen:** Bot beenden und `bot/state.json` löschen – er vergisst dann alle gesehenen
+  Artikel und den Verlauf. Beim nächsten Start übernimmt die Seite automatisch den leeren Stand.
+  `vapid_privat.pem` dabei **nicht** löschen (siehe unten).
 
 - **Aufwachen dauert:** War der PC aus, schläft die Seite; der erste Aufruf dauert dann etwa eine
   Minute. Benachrichtigungen sind davon nicht betroffen.
