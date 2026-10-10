@@ -1,0 +1,230 @@
+/* Design "Leitstelle": dunkles Kontrollpult, IBM Plex Sans (OFL, siehe fonts/OFL.txt) */
+
+@font-face { font-family: "Plex"; src: url("/static/fonts/plex-sans-400.woff2") format("woff2"); font-weight: 400; font-display: swap; }
+@font-face { font-family: "Plex"; src: url("/static/fonts/plex-sans-500.woff2") format("woff2"); font-weight: 500; font-display: swap; }
+@font-face { font-family: "Plex"; src: url("/static/fonts/plex-sans-600.woff2") format("woff2"); font-weight: 600; font-display: swap; }
+@font-face { font-family: "Plex"; src: url("/static/fonts/plex-sans-700.woff2") format("woff2"); font-weight: 700; font-display: swap; }
+
+:root {
+  --grund: #0f1724;
+  --leiste: #172133;
+  --kasten: #1e2a40;
+  --linie: #243049;
+  --rand: #34425c;
+  --eingabe: #141e2f;
+  --text: #e7ecf3;
+  --text-hell: #eef2f8;
+  --sekundaer: #c3cddb;
+  --leise: #93a0b4;
+  --teaser: #b4bfce;
+  --chip: #22304a;
+  --chip-text: #c9d3e1;
+  --akzent: #f5a524;
+  --akzent-text: #1a1300;
+  --gruen: #4cc38a;
+  --gruen-text: #7fd3a8;
+  --grau: #6b7891;
+  --fehler: #f4a29a;
+  --fehler-grund: rgba(240, 113, 103, 0.10);
+  --fokus: #7cc4ff;
+  --schrift: "Plex", "Segoe UI", system-ui, -apple-system, sans-serif;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--grund);
+  color: var(--text);
+  font: 15px/1.5 var(--schrift);
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: var(--text-hell); text-decoration: none; }
+a:hover { text-decoration: underline; }
+:focus-visible { outline: 3px solid var(--fokus); outline-offset: 2px; border-radius: 4px; }
+
+h1, h2, p { margin: 0; }
+button, select, input { font: inherit; color: var(--text); }
+.leise { color: var(--leise); }
+.nur-vorlesen { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* ---------------------------------------------------------------- Seitenaufbau */
+
+.seite {
+  display: grid;
+  grid-template-columns: 340px minmax(0, 1fr);
+  grid-template-rows: auto 1fr;
+  grid-template-areas: "oben inhalt" "unten inhalt";
+  min-height: 100vh;
+}
+.leiste-oben, .leiste-unten {
+  background: var(--leiste);
+  padding: 28px 26px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+.leiste-oben { grid-area: oben; padding-bottom: 14px; }
+.leiste-unten { grid-area: unten; padding-top: 14px; }
+.inhalt { grid-area: inhalt; min-width: 0; padding: 32px clamp(16px, 4vw, 48px) 48px; }
+
+@media (max-width: 860px) {
+  .seite { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; grid-template-areas: "oben" "inhalt" "unten"; }
+  .leiste-oben { padding: 20px 16px; gap: 20px; }
+  .leiste-unten { padding: 24px 16px 32px; }
+  .inhalt { padding: 24px 16px 32px; }
+}
+
+/* ---------------------------------------------------------------- Marke & Status */
+
+.marke { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; letter-spacing: -0.01em; }
+.marke svg { flex: none; }
+.marke h1 { font-size: inherit; font-weight: inherit; }
+
+.status { display: flex; flex-direction: column; gap: 4px; }
+.status-kopf { display: flex; align-items: center; gap: 12px; padding-left: 5px; }
+.status-titel { font-size: 34px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.15; }
+.status-haupt { margin-top: 6px; color: var(--sekundaer); }
+.status .leise { font-size: 14px; }
+
+.punkt { width: 12px; height: 12px; border-radius: 50%; flex: none; background: var(--grau); }
+.punkt-laeuft { background: var(--gruen); box-shadow: 0 0 0 5px rgba(76, 195, 138, 0.18); }
+.punkt-pausiert { background: var(--akzent); box-shadow: 0 0 0 5px rgba(245, 165, 36, 0.18); }
+
+/* ---------------------------------------------------------------- Steuerung */
+
+.steuerung { display: flex; flex-direction: column; gap: 10px; }
+.steuerung button, .knopf {
+  min-height: 46px;
+  padding: 0 14px;
+  border: 1px solid var(--rand);
+  border-radius: 8px;
+  background: transparent;
+  font-weight: 500;
+  cursor: pointer;
+}
+.steuerung button:hover, .knopf:hover { border-color: var(--leise); }
+.steuerung button.haupt, .knopf.haupt { border: 0; background: var(--akzent); color: var(--akzent-text); font-weight: 600; }
+.steuerung button.haupt:hover, .knopf.haupt:hover { filter: brightness(1.06); }
+.steuerung button:disabled, .knopf:disabled { opacity: 0.5; cursor: wait; }
+
+.intervall { display: flex; gap: 8px; align-items: center; }
+.intervall label { color: var(--leise); font-size: 14px; white-space: nowrap; }
+.intervall select { flex: 1; min-width: 0; }
+.steuerung .intervall button { min-height: 44px; }
+
+select, input[type="search"], input[type="password"] {
+  min-height: 44px;
+  border: 1px solid var(--rand);
+  border-radius: 8px;
+  background: var(--eingabe);
+  padding: 0 12px;
+}
+input::placeholder { color: var(--leise); }
+
+.rueckmeldung { font-size: 14px; color: var(--sekundaer); }
+.rueckmeldung:empty { display: none; }
+
+@media (max-width: 860px) {
+  .steuerung { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .steuerung .intervall, .steuerung .rueckmeldung, .steuerung button[data-aktion="testnachricht"] { grid-column: 1 / -1; }
+}
+
+.link-knopf {
+  align-self: flex-start;
+  padding: 6px 0;
+  border: 0;
+  background: none;
+  color: var(--sekundaer);
+  font-weight: 500;
+  font-size: 14px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.link-knopf:hover { color: var(--text-hell); }
+
+/* ---------------------------------------------------------------- Benachrichtigungen */
+
+.kasten { padding: 16px; border-radius: 10px; background: var(--kasten); display: flex; flex-direction: column; gap: 8px; }
+.kasten-titel { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; }
+.kasten-titel svg { stroke: var(--leise); }
+.kasten.an .kasten-titel svg { stroke: var(--gruen); }
+.kasten p { font-size: 14px; color: var(--leise); }
+.kasten p:empty { display: none; }
+.kasten .knopf { align-self: flex-start; min-height: 42px; }
+
+/* ---------------------------------------------------------------- Fehler & Befehle */
+
+.leiste-unten h2 { font-size: 14px; font-weight: 600; color: var(--sekundaer); margin-bottom: 8px; }
+.nebenliste { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; font-size: 14px; color: var(--sekundaer); }
+.nebenliste .wann { color: var(--leise); margin-right: 8px; }
+.fehler-eintrag { padding: 12px 14px; border-radius: 8px; background: var(--fehler-grund); }
+.fehler-eintrag .wann { display: block; font-size: 12px; margin: 0; }
+.fehler-eintrag .problem { color: var(--fehler); overflow-wrap: anywhere; }
+.abmelden { margin-top: auto; }
+
+/* ---------------------------------------------------------------- Artikel */
+
+.kopf { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 12px; }
+.seitentitel { font-size: 28px; font-weight: 600; letter-spacing: -0.02em; }
+#anzahl { font-size: 14px; }
+
+.filter { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; align-items: center; }
+.filter input[type="search"] { flex: 1 1 260px; border-color: var(--linie); }
+.filter select { border-color: var(--linie); }
+.haken { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; color: var(--sekundaer); min-height: 44px; }
+.haken input { width: 18px; height: 18px; accent-color: var(--akzent); }
+
+.ticker { list-style: none; margin: 24px 0 0; padding: 0; }
+.ticker > li {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: 18px;
+  padding: 20px 0;
+  border-top: 1px solid var(--linie);
+}
+.ticker > li:last-child { border-bottom: 1px solid var(--linie); }
+@media (max-width: 520px) {
+  .ticker > li { grid-template-columns: 58px minmax(0, 1fr); gap: 12px; }
+}
+
+.zeit-wert { font-size: 19px; font-weight: 600; }
+.zeit-wert.unsicher { color: var(--akzent); }
+.zeit small { display: block; font-size: 12px; color: var(--leise); }
+
+.titel-zeile { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.titel { font-size: 18px; font-weight: 600; line-height: 1.35; color: var(--text-hell); }
+.neu-marke { padding: 1px 8px; border-radius: 4px; background: var(--akzent); color: var(--akzent-text); font-size: 12px; font-weight: 700; }
+.quelle { margin-top: 4px; font-size: 14px; color: var(--leise); }
+.gemeldet-hinweis { color: var(--gruen-text); margin-left: 8px; }
+.teaser {
+  margin-top: 8px;
+  max-width: 70ch;
+  color: var(--teaser);
+  line-height: 1.55;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 0; padding: 0; list-style: none; }
+.tags li { padding: 2px 9px; border-radius: 4px; background: var(--chip); color: var(--chip-text); font-size: 13px; }
+.ticker > li.leer { display: block; padding: 32px 0; color: var(--leise); max-width: 50ch; }
+
+/* ---------------------------------------------------------------- Login */
+
+.login { display: grid; place-items: center; min-height: 100vh; padding: 16px; }
+.login-box { width: min(24rem, 100%); padding: 32px 28px; border-radius: 12px; background: var(--leiste); display: flex; flex-direction: column; gap: 20px; }
+.login-box .marke { font-size: 20px; }
+.login-box form { display: flex; flex-direction: column; gap: 10px; }
+.login-box label { font-weight: 500; font-size: 14px; color: var(--sekundaer); }
+.login-box input { width: 100%; }
+.login-box .knopf { width: 100%; margin-top: 6px; }
+.fehlertext { color: var(--fehler); font-size: 14px; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+}

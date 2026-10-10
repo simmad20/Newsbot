@@ -1,0 +1,15 @@
+{
+  "name": "News-Bot",
+  "short_name": "News-Bot",
+  "description": "Dein privater Nachrichten-Ticker",
+  "lang": "de",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0f1724",
+  "theme_color": "#172133",
+  "icons": [
+    { "src": "/static/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/static/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

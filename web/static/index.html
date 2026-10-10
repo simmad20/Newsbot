@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>News-Bot</title>
+  <link rel="preload" href="/static/fonts/plex-sans-400.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/static/fonts/plex-sans-600.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/static/icon-192.png">
+  <meta name="theme-color" content="#172133">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="News-Bot">
+</head>
+<body>
+<div class="seite">
+
+  <aside class="leiste-oben" aria-label="Status und Steuerung">
+    <div class="marke">
+      <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><rect width="28" height="28" rx="7" fill="#f5a524"/><rect x="7" y="8" width="12" height="3" rx="1.5" fill="#1a1300"/><rect x="7" y="13" width="14" height="3" rx="1.5" fill="#1a1300"/><rect x="7" y="18" width="9" height="3" rx="1.5" fill="#1a1300"/></svg>
+      News-Bot
+    </div>
+
+    <section class="status" aria-label="Status" aria-live="polite">
+      <div class="status-kopf">
+        <span id="status-punkt" class="punkt" aria-hidden="true"></span>
+        <div id="signal-titel" class="status-titel">Verbinde …</div>
+      </div>
+      <p id="status-zeile1" class="status-haupt">Daten werden geladen.</p>
+      <p id="status-zeile2" class="leise"></p>
+      <p id="status-zeile3" class="leise"></p>
+    </section>
+
+    <section class="steuerung" aria-label="Bot steuern">
+      <button type="button" class="haupt" data-aktion="jetzt_pruefen">Jetzt prüfen</button>
+      <button type="button" id="pause-knopf" data-aktion="pausieren">Pausieren</button>
+      <div class="intervall">
+        <label for="intervall">Prüfen alle</label>
+        <select id="intervall">
+          <option value="5">5 Min.</option>
+          <option value="10">10 Min.</option>
+          <option value="15">15 Min.</option>
+          <option value="30">30 Min.</option>
+          <option value="60">60 Min.</option>
+          <option value="120">2 Std.</option>
+        </select>
+        <button type="button" data-aktion="intervall" aria-label="Intervall übernehmen">OK</button>
+      </div>
+      <button type="button" data-aktion="testnachricht">Testbenachrichtigung</button>
+      <p id="rueckmeldung" class="rueckmeldung" role="status" aria-live="polite"></p>
+    </section>
+
+    <section id="push-kasten" class="kasten" aria-label="Benachrichtigungen">
+      <h2 class="kasten-titel">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+        <span id="push-titel">Benachrichtigungen</span>
+      </h2>
+      <p id="push-hinweis"></p>
+      <button type="button" id="push-knopf" class="knopf" hidden>Auf diesem Gerät einschalten</button>
+    </section>
+  </aside>
+
+  <main class="inhalt">
+    <div class="kopf">
+      <h1 class="seitentitel">Artikel</h1>
+      <span id="anzahl" class="leise"></span>
+    </div>
+    <div class="filter" role="search">
+      <label for="suche" class="nur-vorlesen">Suche</label>
+      <input id="suche" type="search" placeholder="Titel und Vorschau durchsuchen">
+      <select id="filter-tag" aria-label="Tag"><option value="">Alle Tags</option></select>
+      <select id="filter-medium" aria-label="Medium"><option value="">Alle Medien</option></select>
+      <label class="haken"><input id="nur-gemeldet" type="checkbox"> Nur gemeldete</label>
+    </div>
+    <ol id="ticker" class="ticker"></ol>
+  </main>
+
+  <aside class="leiste-unten" aria-label="Fehler und Befehle">
+    <section>
+      <h2>Fehler</h2>
+      <ul id="fehler" class="nebenliste"></ul>
+    </section>
+    <section>
+      <h2>Letzte Befehle</h2>
+      <ul id="befehle" class="nebenliste"></ul>
+    </section>
+    <form method="post" action="/logout" class="abmelden">
+      <button type="submit" class="link-knopf">Abmelden</button>
+    </form>
+  </aside>
+
+</div>
+<script src="/static/app.js"></script>
+</body>
+</html>

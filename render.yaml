@@ -1,0 +1,16 @@
+# Render-Blueprint: legt das Dashboard als kostenlosen Web Service an.
+# Render → New → Blueprint → dieses Repository auswählen.
+services:
+  - type: web
+    name: newsbot
+    runtime: python
+    plan: free
+    rootDir: web
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn server:app --host 0.0.0.0 --port $PORT --proxy-headers
+    healthCheckPath: /gesund
+    envVars:
+      - key: BOT_TOKEN
+        generateValue: true      # Render erzeugt einen zufälligen Schlüssel – den kopierst du in die config.toml
+      - key: DASHBOARD_PASSWORT
+        sync: false              # Render fragt dich beim Anlegen nach deinem Passwort

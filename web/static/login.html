@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>News-Bot – Anmelden</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/static/icon-192.png">
+  <meta name="theme-color" content="#172133">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="News-Bot">
+</head>
+<body class="login">
+  <main class="login-box">
+    <div class="marke">
+      <svg width="30" height="30" viewBox="0 0 28 28" aria-hidden="true"><rect width="28" height="28" rx="7" fill="#f5a524"/><rect x="7" y="8" width="12" height="3" rx="1.5" fill="#1a1300"/><rect x="7" y="13" width="14" height="3" rx="1.5" fill="#1a1300"/><rect x="7" y="18" width="9" height="3" rx="1.5" fill="#1a1300"/></svg>
+      <h1>News-Bot</h1>
+    </div>
+    <p class="leise">Dein privater Nachrichten-Ticker.</p>
+    <form method="post" action="/login">
+      <label for="passwort">Passwort</label>
+      <input id="passwort" name="passwort" type="password" autocomplete="current-password" required autofocus>
+      <p id="fehler" class="fehlertext" hidden></p>
+      <button type="submit" class="knopf haupt">Anmelden</button>
+    </form>
+  </main>
+  <script src="/static/login.js"></script>
+</body>
+</html>

@@ -1,0 +1,5 @@
+feedparser>=6.0,<7
+openpyxl>=3.1,<4
+requests>=2.31,<3
+cryptography>=42  # für die Browser-Benachrichtigungen
+tzdata>=2024.1  # Zeitzonen-Daten für Windows

@@ -1,0 +1,11 @@
+# Geheimnisse und private Daten nie hochladen
+bot/config.toml
+bot/state.json
+bot/state.*.json
+bot/*.tmp
+bot/*.log*
+bot/*.lock
+bot/vapid_privat.pem
+bot/quellen.xlsx
+.venv/
+__pycache__/
