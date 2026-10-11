@@ -19,6 +19,7 @@ import asyncio
 import hashlib
 import hmac
 import ipaddress
+import json
 import os
 import re
 import time
@@ -60,7 +61,11 @@ WORT_MUSTER = re.compile(r"[^\W_][\w .&/'+-]{0,58}\*?")
 DOMAIN_MUSTER = re.compile(r"[\w-]+(\.[\w-]+)+")
 INTERNE_NAMEN = ("localhost", ".localhost", ".local", ".lan", ".home", ".internal", ".intranet", ".corp", ".arpa")
 VERBOTENE_ZEICHEN = set('\\"<>`{}|^')
-MAX_PRO_BEFEHL = 50
+MAX_PRO_BEFEHL = 50        # Eingabe im Formular
+MAX_IMPORT_QUELLEN = 700   # Datei-Import (gleiche Grenzen wie die CSV-Dateien beim Bot)
+MAX_IMPORT_TAGS = 100
+MAX_WOERTER_PRO_TAG = 100
+MAX_ALTER_STUNDEN = 168
 
 
 def _oeffentlich(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
@@ -145,6 +150,7 @@ class FehlerIn(BaseModel):
 class StatusIn(BaseModel):
     pausiert: bool
     intervall_minuten: int = Field(ge=1, le=1440)
+    max_alter_stunden: int = Field(24, ge=1, le=10000)
     letzter_lauf: Optional[str] = Field(None, max_length=40)
     naechster_lauf: Optional[str] = Field(None, max_length=40)
     letztes_ergebnis: Kurz = ""
@@ -201,10 +207,24 @@ class SyncIn(BaseModel):
     listen: Optional[ListenIn] = None  # nur, wenn sich etwas geändert hat
 
 
-Aktion = Literal["jetzt_pruefen", "pausieren", "fortsetzen", "intervall", "testnachricht",
-                 "quellen_hinzufuegen", "quellen_entfernen", "tag_hinzufuegen", "tag_entfernen"]
+Aktion = Literal["jetzt_pruefen", "pausieren", "fortsetzen", "intervall", "max_alter", "testnachricht",
+                 "quellen_hinzufuegen", "quellen_entfernen", "tag_hinzufuegen", "tag_entfernen",
+                 "quellen_importieren", "tags_importieren"]
 QUELLEN_AKTIONEN = {"quellen_hinzufuegen", "quellen_entfernen"}
 TAG_AKTIONEN = {"tag_hinzufuegen", "tag_entfernen"}
+LISTEN_AKTIONEN = QUELLEN_AKTIONEN | TAG_AKTIONEN | {"quellen_importieren", "tags_importieren"}
+
+
+class QuelleImport(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    wochentag: Wochentag
+    url: QuellUrl
+
+
+class TagImport(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: TagName
+    woerter: list[Schlagwort] = Field(min_length=1, max_length=MAX_WOERTER_PRO_TAG)
 
 
 B64 = Annotated[str, Field(min_length=10, max_length=200, pattern=r"^[A-Za-z0-9_-]+=*$")]
@@ -235,16 +255,24 @@ class BefehlIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     aktion: Aktion
-    wert: Optional[int] = Field(None, ge=5, le=240)
+    wert: Optional[int] = Field(None, ge=1, le=240)
     tage: list[Wochentag] = Field(default_factory=list, max_length=7)
     urls: list[QuellUrl] = Field(default_factory=list, max_length=MAX_PRO_BEFEHL)
     tag: Optional[TagName] = None
     woerter: list[Schlagwort] = Field(default_factory=list, max_length=MAX_PRO_BEFEHL)
+    quellen: list[QuelleImport] = Field(default_factory=list, max_length=MAX_IMPORT_QUELLEN)
+    tags: list[TagImport] = Field(default_factory=list, max_length=MAX_IMPORT_TAGS)
 
     @model_validator(mode="after")
     def passt_zur_aktion(self) -> "BefehlIn":
-        if self.aktion == "intervall" and self.wert is None:
-            raise ValueError("Für 'intervall' bitte eine Minutenzahl (5–240) angeben.")
+        if self.aktion == "intervall" and (self.wert is None or self.wert < 5):
+            raise ValueError("Für das Intervall bitte eine Minutenzahl (5–240) angeben.")
+        if self.aktion == "max_alter" and (self.wert is None or self.wert > MAX_ALTER_STUNDEN):
+            raise ValueError(f"Für das Höchstalter bitte 1–{MAX_ALTER_STUNDEN} Stunden angeben.")
+        if self.aktion == "quellen_importieren" and not self.quellen:
+            raise ValueError("Die Datei enthält keine Quellen.")
+        if self.aktion == "tags_importieren" and not self.tags:
+            raise ValueError("Die Datei enthält keine Tags.")
         if self.aktion in QUELLEN_AKTIONEN and (not self.tage or not self.urls):
             raise ValueError("Bitte mindestens eine Adresse und einen Wochentag angeben.")
         if self.aktion in TAG_AKTIONEN and not self.tag:
@@ -302,7 +330,8 @@ class Speicher:
                     b["zustand"], b["ergebnis"] = "erledigt", erledigt[b["id"]]
                 elif b["zustand"] == "offen":
                     b["zustand"] = "abgeholt"
-                    abzuholen.append({k: b[k] for k in ("id", "aktion", "wert", "tage", "urls", "tag", "woerter")})
+                    abzuholen.append({k: b[k] for k in ("id", "aktion", "wert", "tage", "urls", "tag", "woerter",
+                                                        "quellen", "tags")})
             push, self.push_aenderungen = self.push_aenderungen, []
             return {"befehle": abzuholen, "snapshot_noetig": not self.hat_snapshot, "push_aenderungen": push}
 
@@ -327,11 +356,11 @@ class Speicher:
         with self.lock:
             # Gleiche offene Steuer-Aktion nicht doppelt einreihen – nur den Wert aktualisieren.
             # (Quellen- und Tag-Befehle haben jeweils eigenen Inhalt und bleiben alle erhalten.)
-            if b.aktion not in QUELLEN_AKTIONEN | TAG_AKTIONEN:
+            if b.aktion not in LISTEN_AKTIONEN:
                 for alt in self.befehle:
                     if alt["zustand"] == "offen" and alt["aktion"] == b.aktion:
                         alt["wert"] = b.wert
-                        return alt
+                        return kompakt(alt)
             neu = {
                 "id": uuid.uuid4().hex[:12],
                 **b.model_dump(),
@@ -341,7 +370,7 @@ class Speicher:
             }
             self.befehle.append(neu)
             self.befehle = self.befehle[-self.MAX_BEFEHLE:]
-            return neu
+            return kompakt(neu)
 
     def ansicht(self) -> dict:
         with self.lock:
@@ -359,10 +388,21 @@ class Speicher:
                 },
                 "artikel": list(reversed(self.artikel.values())),
                 "fehler": list(reversed(self.fehler)),
-                "befehle": list(reversed(self.befehle)),
+                "befehle": [kompakt(b) for b in reversed(self.befehle)],
                 "listen": self.listen,
                 "server_laeuft_seit_sekunden": round(time.time() - SERVER_START),
             }
+
+
+def kompakt(b: dict) -> dict:
+    """Für die Seite: Datei-Importe nur als Anzahl statt mit allen Einträgen (die Seite fragt alle 10 s ab)."""
+    k = {x: v for x, v in b.items() if x not in ("quellen", "tags")}
+    if b.get("quellen"):
+        k["anzahl_quellen"] = len(b["quellen"])
+    if b.get("tags"):
+        k["anzahl_tags"] = len(b["tags"])
+        k["anzahl_woerter"] = sum(len(t["woerter"]) for t in b["tags"])
+    return k
 
 
 speicher = Speicher()
@@ -448,7 +488,7 @@ def schrift(datei: str):
 
 @app.get("/static/{datei}")
 def statisch(datei: str):
-    erlaubt = {"app.js", "login.js", "style.css", "icon-192.png", "icon-512.png"}
+    erlaubt = {"app.js", "verwaltung.js", "login.js", "style.css", "icon-192.png", "icon-512.png"}
     if datei not in erlaubt:
         raise HTTPException(404)
     return FileResponse(STATIC / datei)
@@ -493,6 +533,20 @@ def daten(request: Request):
     return speicher.ansicht()
 
 
+async def lies_json(request: Request, grenze: int):
+    """JSON lesen, aber nie mehr als `grenze` Bytes annehmen – auch wenn keine Größe angegeben ist."""
+    angabe = request.headers.get("content-length", "0")
+    if not angabe.isdigit() or int(angabe) > grenze:
+        raise HTTPException(413, "Zu groß.")
+    teile, groesse = [], 0
+    async for stueck in request.stream():
+        groesse += len(stueck)
+        if groesse > grenze:
+            raise HTTPException(413, "Zu groß.")
+        teile.append(stueck)
+    return json.loads(b"".join(teile))
+
+
 def lesbarer_fehler(e: ValueError) -> str:
     if isinstance(e, ValidationError):
         meldungen = [f.get("msg", "").removeprefix("Value error, ") for f in e.errors()]
@@ -506,10 +560,8 @@ async def befehl(request: Request):
     # Nur JSON annehmen: fremde Webseiten können ohne CORS-Freigabe kein JSON schicken.
     if not request.headers.get("content-type", "").startswith("application/json"):
         raise HTTPException(415, "Nur JSON erlaubt.")
-    if int(request.headers.get("content-length") or 0) > 100_000:
-        raise HTTPException(413, "Zu groß.")
     try:
-        b = BefehlIn.model_validate(await request.json())
+        b = BefehlIn.model_validate(await lies_json(request, 2_000_000))  # Datei-Importe dürfen größer sein
     except ValueError as e:
         return JSONResponse({"detail": lesbarer_fehler(e)}, status_code=422)
     return speicher.befehl(b)
@@ -521,7 +573,7 @@ async def push_abo(request: Request):
     if not request.headers.get("content-type", "").startswith("application/json"):
         raise HTTPException(415, "Nur JSON erlaubt.")
     try:
-        p = PushIn.model_validate(await request.json())
+        p = PushIn.model_validate(await lies_json(request, 20_000))
     except ValueError as e:
         return JSONResponse({"detail": str(e)[:500]}, status_code=422)
     speicher.push(p)
@@ -533,10 +585,8 @@ async def push_abo(request: Request):
 @app.post("/bot/sync")
 async def bot_sync(request: Request):
     nur_bot(request)  # zuerst prüfen, erst dann den Inhalt überhaupt lesen
-    if int(request.headers.get("content-length") or 0) > 3_000_000:
-        raise HTTPException(413, "Zu groß.")
     try:
-        daten = SyncIn.model_validate(await request.json())
+        daten = SyncIn.model_validate(await lies_json(request, 3_000_000))
     except ValueError as e:
         return JSONResponse({"detail": str(e)[:2000]}, status_code=422)
     return speicher.sync(daten)
@@ -546,7 +596,7 @@ async def bot_sync(request: Request):
 async def bot_puls(request: Request):
     nur_bot(request)
     try:
-        speicher.puls(PulsIn.model_validate(await request.json()))
+        speicher.puls(PulsIn.model_validate(await lies_json(request, 10_000)))
     except ValueError as e:
         return JSONResponse({"detail": str(e)[:500]}, status_code=422)
     return {"ok": True}
@@ -556,7 +606,7 @@ async def bot_puls(request: Request):
 async def bot_abmelden(request: Request):
     nur_bot(request)
     try:
-        speicher.abmelden(AbmeldenIn.model_validate(await request.json()))
+        speicher.abmelden(AbmeldenIn.model_validate(await lies_json(request, 10_000)))
     except ValueError as e:
         return JSONResponse({"detail": str(e)[:500]}, status_code=422)
     return {"ok": True}

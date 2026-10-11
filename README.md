@@ -101,11 +101,12 @@ Vorher ein offenes Konsolenfenster mit dem Bot schließen – zweimal gleichzeit
 | Jetzt prüfen | startet sofort eine Prüfung – auch wenn pausiert |
 | Pausieren / Fortsetzen | stoppt bzw. startet das automatische Prüfen |
 | Prüfen alle … | Intervall zwischen 5 Minuten und 2 Stunden |
+| Artikel bis … | wie alt ein Artikel höchstens sein darf, damit er noch gemeldet wird (6 Stunden bis 7 Tage) |
 | Testbenachrichtigung | schickt eine Probe an alle eingeschalteten Geräte (und Discord, falls eingerichtet) |
 | Benachrichtigungen ein/aus | für das Gerät, auf dem du gerade bist |
 | Reiter „Artikel“ | nach Tagen gruppiert, je 30 auf einmal („Weitere anzeigen“); Suche, Filter nach Tag und Medium, „nur gemeldete“; **neu** = seit deinem letzten Besuch |
-| Reiter „Quellen“ | alle Quellen nach Wochentag; neue hinzufügen (mehrere auf einmal, für einen oder mehrere Tage), einzelne entfernen |
-| Reiter „Tags“ | alle Tags mit ihren Schlagwörtern; Tags anlegen, Schlagwörter ergänzen oder entfernen, Tags löschen |
+| Reiter „Quellen“ | Tabelle: eine Zeile pro Quelle, eine Spalte pro Wochentag – Tag anklicken schaltet ihn ein/aus; Suche, Quellen hinzufügen, Datei importieren |
+| Reiter „Tags“ | Karten: ein Tag pro Karte mit seinen Schlagwörtern; direkt in der Karte ergänzen oder entfernen; Suche, neuer Tag, Datei importieren |
 | Reiter „Fehler“ / „Befehle“ | welche Quellen nicht gingen, was mit deinen Befehlen passiert ist |
 
 **Woher die Seite weiß, ob der Bot läuft:** Der Bot meldet sich alle 30 Sekunden, auch mitten in
@@ -122,9 +123,16 @@ Bot nur bei Artikeln zu deinen Themen. Auf der Seite stehen trotzdem alle neuen 
 |---|---|---|
 | Quellen ändern | Reiter „Quellen“ auf der Seite – oder `quellen.csv` bearbeiten | nein |
 | Tags/Schlagwörter ändern | Reiter „Tags“ auf der Seite – oder `tags.csv` bearbeiten | nein |
-| `nur_mit_tags` ändern | `config.toml` bearbeiten | **ja** |
-| Pausieren, Intervall, sofort prüfen | Knöpfe auf der Seite | nein |
+| Pausieren, Intervall, Höchstalter, sofort prüfen | Knöpfe auf der Seite | nein |
+| `intervall_minuten`, `max_alter_stunden`, `nur_mit_tags` | `config.toml` bearbeiten und speichern | nein |
+| Discord, Dashboard-Adresse, Zeitzone | `config.toml` bearbeiten | **ja** |
 | Neues Handy dazu | dort „Benachrichtigungen einschalten“ | nein |
+
+**Intervall und Höchstalter** kannst du auf der Seite oder in der `config.toml` einstellen. Es gilt,
+was du zuletzt geändert hast: Speicherst du die `config.toml` mit einem neuen Wert, übernimmt der Bot
+ihn innerhalb von 30 Sekunden – auch wenn auf der Seite vorher etwas anderes eingestellt war. Stellst
+du danach auf der Seite um, gilt wieder die Seite. Erhöhst du das Höchstalter, meldet der Bot bei der
+nächsten Prüfung auch ältere, noch nicht gemeldete Artikel (höchstens `max_meldungen_pro_lauf` auf einmal).
 
 Neustart ohne Fenster: im Task-Manager „pythonw.exe“ beenden und die Verknüpfung im
 Autostart-Ordner doppelklicken (oder PC neu starten).
@@ -141,11 +149,23 @@ Montag;https://orf.at/rss           Cyberkriminalität;ransomware
 Dienstag;https://derstandard.at     Österreich;wien*
 ```
 
-**Über die Webseite** (auch unterwegs): Im Reiter „Quellen“ eine oder mehrere Adressen eingeben
-(eine pro Zeile), Tage anklicken, „Quellen hinzufügen“. Die Seite schickt das an den Bot, der trägt es
-in `quellen.csv` ein und meldet „Erledigt: …“ zurück. Läuft der Bot gerade nicht, wartet der Befehl,
+**Über die Webseite** (auch unterwegs):
+
+- *Quellen hinzufügen:* Adressen eingeben (eine pro Zeile), Tage anklicken, „Hinzufügen“. In der
+  Tabelle schaltet ein Klick auf einen Tag die Quelle für diesen Tag ein oder aus, der Mülleimer
+  entfernt sie an allen Tagen.
+- *Neuer Tag:* Namen eingeben, Schlagwörter mit Enter oder Komma übernehmen. Bestehende Tags
+  ergänzt du direkt in ihrer Karte, das × an einem Schlagwort entfernt es.
+- *Datei importieren:* CSV- oder JSON-Datei auswählen oder hineinziehen. Die Seite zeigt vorher an,
+  was neu ist, was schon vorhanden ist und was übersprungen wird (mit Grund). Unterstützt werden
+  `quellen.csv`/`tags.csv` selbst, eine CSV mit einer Spalte pro Wochentag (wie die alte Excel) und
+  JSON – Beispiele stehen im Dialog unter „Welche Formate werden erkannt?“. Vorhandenes wird ergänzt,
+  nie gelöscht.
+
+Die Seite schickt jede Änderung an den Bot, der sie in die CSV-Datei einträgt und „Erledigt: …“
+zurückmeldet. Bis dahin sind die Einträge gestrichelt. Läuft der Bot gerade nicht, wartet der Befehl,
 bis er wieder da ist (startet Render in der Zwischenzeit neu, geht ein wartender Befehl verloren –
-dann einfach nochmal senden). Tags genauso im Reiter „Tags“.
+dann einfach nochmal senden).
 
 **Von Hand:** Datei mit Excel oder dem Editor öffnen, bearbeiten, speichern. Der Bot liest beide
 Dateien bei jeder Prüfung neu – kein Neustart nötig. Excel vor dem nächsten Befehl von der Webseite
@@ -162,7 +182,11 @@ wieder schließen, sonst kann der Bot die Datei nicht ändern (er meldet das dan
   `- . & / ' +`, am Anfang immer ein Buchstabe oder eine Ziffer, bei Schlagwörtern `*` am Ende.
   Dadurch kann keine Zelle mit `=`, `+`, `-` oder `@` beginnen – Excel würde sie sonst beim Öffnen
   als Formel ausführen.
-- Höchstens 50 Einträge pro Befehl, 700 Quellen, 100 Tags mit je 100 Schlagwörtern.
+- Höchstens 700 Einträge in `quellen.csv` (eine Quelle an 3 Tagen = 3 Einträge) und 100 Tags mit je
+  100 Schlagwörtern. Ein Import darf bis zu dieser Grenze alles auf einmal bringen; was darüber
+  hinausgeht, wird übersprungen und gemeldet.
+- Importierte Dateien liest nur dein Browser (höchstens 2 MB). An Server und Bot gehen nur die
+  einzelnen, geprüften Einträge – die Datei selbst kommt nie auf deinen PC und wird nie ausgeführt.
 
 Ungültige Zeilen, die du von Hand einträgst, überspringt der Bot und zeigt sie im Reiter „Fehler“ –
 gelöscht werden sie nicht. Die Webseite kann nur diese festen Befehle schicken; Programme starten,
@@ -209,5 +233,6 @@ automatisch in `tags.csv`. Eine alte `quellen.xlsx` wird nicht mehr gelesen – 
 | `bot/newsbot.log` | Protokoll |
 | `web/server.py` | die Webseite für Render |
 | `web/static/` | Seite im Design „Leitstelle“, Logik, Service Worker, App-Symbol |
+| `web/static/verwaltung.js` | Quellen-Tabelle, Tag-Karten, Dialoge und Datei-Import |
 | `web/static/fonts/` | Schrift IBM Plex Sans (freie Lizenz, siehe `OFL.txt`) |
 | `render.yaml` | sagt Render, wie der Dienst angelegt wird |

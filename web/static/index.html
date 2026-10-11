@@ -65,6 +65,18 @@
         </select>
         <button type="button" class="knopf" data-aktion="intervall" aria-label="Intervall übernehmen">OK</button>
       </div>
+      <div class="intervall">
+        <label for="max-alter" title="Ältere Artikel meldet der Bot nicht mehr">Artikel bis</label>
+        <select id="max-alter">
+          <option value="6">6 Std. alt</option>
+          <option value="12">12 Std. alt</option>
+          <option value="24">24 Std. alt</option>
+          <option value="48">2 Tage alt</option>
+          <option value="72">3 Tage alt</option>
+          <option value="168">7 Tage alt</option>
+        </select>
+        <button type="button" class="knopf" data-aktion="max_alter" aria-label="Höchstalter übernehmen">OK</button>
+      </div>
       <button type="button" class="knopf" data-aktion="testnachricht">Testbenachrichtigung senden</button>
       <p id="rueckmeldung" class="rueckmeldung" role="status" aria-live="polite"></p>
     </section>
@@ -112,45 +124,47 @@
     </section>
 
     <section id="bereich-quellen" role="tabpanel" aria-labelledby="reiter-quellen" hidden>
-      <p class="bereich-hinweis leise">Der Bot prüft an jedem Wochentag die dort eingetragenen Quellen. Sie stehen in <code>quellen.csv</code> auf deinem PC – Änderungen hier schickt die Seite an den Bot, und der trägt sie dort ein.</p>
-      <form id="quellen-form" class="formular" novalidate>
-        <div class="feld">
-          <label for="quellen-urls">Neue Quellen</label>
-          <textarea id="quellen-urls" rows="3" spellcheck="false" autocapitalize="off" autocomplete="off" placeholder="derstandard.at&#10;https://www.heise.de/rss/heise.rdf"></textarea>
-          <p class="feld-hilfe">Eine Adresse pro Zeile, höchstens 50. Startseite, Ressortseite oder direkt die Feed-Adresse.</p>
+      <div class="werkzeugleiste">
+        <label class="suchfeld">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <span class="nur-vorlesen">Quellen durchsuchen</span>
+          <input id="quellen-suche" type="search" placeholder="Quellen durchsuchen" autocomplete="off">
+        </label>
+        <div class="werkzeug-knoepfe">
+          <button type="button" class="knopf mit-symbol" data-import="quellen"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg><span>Datei importieren</span></button>
+          <button type="button" class="knopf haupt mit-symbol" id="quellen-neu"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg><span>Quellen hinzufügen</span></button>
         </div>
-        <fieldset class="feld">
-          <legend>An welchen Tagen?</legend>
-          <div id="tage-wahl" class="tage-wahl"></div>
-          <div class="schnellwahl">
-            <button type="button" class="link-knopf" data-tage="werktage">Mo–Fr</button>
-            <button type="button" class="link-knopf" data-tage="alle">Alle</button>
-            <button type="button" class="link-knopf" data-tage="keine">Keine</button>
-          </div>
-        </fieldset>
-        <button type="submit" class="knopf haupt">Quellen hinzufügen</button>
-        <p id="quellen-rueck" class="rueckmeldung" role="status" aria-live="polite"></p>
-      </form>
-      <div id="quellen-liste" class="listen-bereich"></div>
+      </div>
+      <p id="quellen-info" class="bereich-info"></p>
+      <p id="quellen-rueck" class="rueckmeldung" role="status" aria-live="polite"></p>
+      <div id="quellen-ausstehend"></div>
+      <div id="quellen-rahmen" class="tabellen-rahmen">
+        <table class="quellen-tabelle">
+          <caption class="nur-vorlesen">Quellen nach Wochentag. Ein Tag-Knopf schaltet die Quelle für diesen Tag ein oder aus.</caption>
+          <thead><tr id="quellen-kopf"></tr></thead>
+          <tbody id="quellen-zeilen"></tbody>
+        </table>
+      </div>
+      <div id="quellen-leer" class="leer-kasten" hidden></div>
     </section>
 
     <section id="bereich-tags" role="tabpanel" aria-labelledby="reiter-tags" hidden>
-      <p class="bereich-hinweis leise">Tags markieren Artikel, deren Titel oder Vorschau ein Schlagwort enthält. Sie stehen in <code>tags.csv</code> auf deinem PC und gelten ab der nächsten Prüfung.</p>
-      <form id="tags-form" class="formular" novalidate>
-        <div class="feld">
-          <label for="tag-name">Tag</label>
-          <input id="tag-name" type="text" maxlength="40" list="tag-namen" autocomplete="off" placeholder="z. B. Cybersecurity oder ein bestehender Tag">
-          <datalist id="tag-namen"></datalist>
+      <div class="werkzeugleiste">
+        <label class="suchfeld">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <span class="nur-vorlesen">Tags und Schlagwörter durchsuchen</span>
+          <input id="tags-suche" type="search" placeholder="Tags und Schlagwörter durchsuchen" autocomplete="off">
+        </label>
+        <div class="werkzeug-knoepfe">
+          <button type="button" class="knopf mit-symbol" data-import="tags"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg><span>Datei importieren</span></button>
+          <button type="button" class="knopf haupt mit-symbol" id="tag-neu"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg><span>Neuer Tag</span></button>
         </div>
-        <div class="feld">
-          <label for="tag-woerter">Schlagwörter</label>
-          <textarea id="tag-woerter" rows="2" spellcheck="false" autocapitalize="off" autocomplete="off" placeholder="ransomware, cyber*, phishing"></textarea>
-          <p class="feld-hilfe">Mit Komma oder Zeilenumbruch trennen. <strong>cyber*</strong> findet auch „Cyberangriff“, ohne * zählt nur das ganze Wort. Groß-/Kleinschreibung egal.</p>
-        </div>
-        <button type="submit" class="knopf haupt">Zum Tag hinzufügen</button>
-        <p id="tags-rueck" class="rueckmeldung" role="status" aria-live="polite"></p>
-      </form>
-      <div id="tags-liste" class="listen-bereich"></div>
+      </div>
+      <p id="tags-info" class="bereich-info"></p>
+      <p id="tags-rueck" class="rueckmeldung" role="status" aria-live="polite"></p>
+      <div id="tags-ausstehend"></div>
+      <div id="tags-karten" class="karten-raster"></div>
+      <div id="tags-leer" class="leer-kasten" hidden></div>
     </section>
 
     <section id="bereich-fehler" role="tabpanel" aria-labelledby="reiter-fehler" hidden>
@@ -165,6 +179,88 @@
   </main>
 
 </div>
+<dialog id="dialog-quellen" class="dialog" aria-labelledby="dialog-quellen-titel">
+  <form id="quellen-form" class="dialog-inhalt" novalidate>
+    <header class="dialog-kopf">
+      <h2 id="dialog-quellen-titel">Quellen hinzufügen</h2>
+      <button type="button" class="symbol-knopf" data-schliessen aria-label="Schließen"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+    </header>
+    <div class="feld">
+      <label for="quellen-urls">Adressen</label>
+      <textarea id="quellen-urls" rows="5" spellcheck="false" autocapitalize="off" autocomplete="off" placeholder="derstandard.at&#10;https://www.heise.de/rss/heise.rdf"></textarea>
+      <p class="feld-hilfe">Eine pro Zeile. Startseite, Ressortseite oder direkt die Feed-Adresse.</p>
+    </div>
+    <fieldset class="feld">
+      <legend>An welchen Tagen?</legend>
+      <div id="tage-wahl" class="tage-wahl"></div>
+      <div class="schnellwahl">
+        <button type="button" class="link-knopf" data-tage="werktage">Mo–Fr</button>
+        <button type="button" class="link-knopf" data-tage="alle">Alle</button>
+        <button type="button" class="link-knopf" data-tage="keine">Keine</button>
+      </div>
+    </fieldset>
+    <p id="quellen-fehler" class="dialog-fehler" role="alert"></p>
+    <footer class="dialog-fuss">
+      <button type="button" class="knopf" data-schliessen>Abbrechen</button>
+      <button type="submit" class="knopf haupt">Hinzufügen</button>
+    </footer>
+  </form>
+</dialog>
+
+<dialog id="dialog-tag" class="dialog" aria-labelledby="dialog-tag-titel">
+  <form id="tag-form" class="dialog-inhalt" novalidate>
+    <header class="dialog-kopf">
+      <h2 id="dialog-tag-titel">Neuer Tag</h2>
+      <button type="button" class="symbol-knopf" data-schliessen aria-label="Schließen"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+    </header>
+    <div class="feld">
+      <label for="tag-name">Name</label>
+      <input id="tag-name" type="text" maxlength="40" list="tag-namen" autocomplete="off" placeholder="z. B. Cybersecurity">
+      <datalist id="tag-namen"></datalist>
+      <p id="tag-name-hinweis" class="feld-hilfe"></p>
+    </div>
+    <div class="feld">
+      <label for="tag-wort-eingabe">Schlagwörter</label>
+      <div class="chip-eingabe">
+        <ul id="tag-chip-liste" class="woerter" aria-label="Gewählte Schlagwörter"></ul>
+        <input id="tag-wort-eingabe" type="text" maxlength="600" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="Wort eintippen, Enter">
+      </div>
+      <p class="feld-hilfe">Enter oder Komma übernimmt ein Wort. <strong>cyber*</strong> findet auch „Cyberangriff“, ohne * zählt nur das ganze Wort. Groß-/Kleinschreibung egal.</p>
+    </div>
+    <p id="tag-fehler" class="dialog-fehler" role="alert"></p>
+    <footer class="dialog-fuss">
+      <button type="button" class="knopf" data-schliessen>Abbrechen</button>
+      <button type="submit" class="knopf haupt">Tag speichern</button>
+    </footer>
+  </form>
+</dialog>
+
+<dialog id="dialog-import" class="dialog breit" aria-labelledby="import-titel">
+  <form id="import-form" class="dialog-inhalt" novalidate>
+    <header class="dialog-kopf">
+      <h2 id="import-titel">Datei importieren</h2>
+      <button type="button" class="symbol-knopf" data-schliessen aria-label="Schließen"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+    </header>
+    <label id="import-ablage" class="ablage">
+      <input id="import-datei" type="file" accept=".csv,.json,.txt,text/csv,application/json" class="nur-vorlesen">
+      <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/><path d="M12 18v-6"/><path d="m9 15 3-3 3 3"/></svg>
+      <span><strong>Datei auswählen</strong> oder hierher ziehen</span>
+      <span id="import-dateiname" class="feld-hilfe">CSV oder JSON, höchstens 2 MB</span>
+    </label>
+    <details class="format-hilfe">
+      <summary>Welche Formate werden erkannt?</summary>
+      <div id="import-formate"></div>
+    </details>
+    <div id="import-vorschau" class="import-vorschau" hidden></div>
+    <p id="import-fehler" class="dialog-fehler" role="alert"></p>
+    <footer class="dialog-fuss">
+      <button type="button" class="knopf" data-schliessen>Abbrechen</button>
+      <button type="submit" id="import-start" class="knopf haupt" disabled>Importieren</button>
+    </footer>
+  </form>
+</dialog>
+
 <script src="/static/app.js"></script>
+<script src="/static/verwaltung.js"></script>
 </body>
 </html>

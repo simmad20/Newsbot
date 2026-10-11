@@ -55,13 +55,23 @@ TIMEOUT = 20
 SYNC_TIMEOUT = 90  # Render-Free braucht nach dem Schlafen ca. 1 Minute zum Aufwachen
 PAUSE_ZWISCHEN_ABRUFEN = 1.0
 GESEHEN_BEHALTEN_TAGE = 14
+MAX_ALTER_GRENZE = 168  # 7 Tage; muss unter GESEHEN_BEHALTEN_TAGE bleiben, sonst kämen alte Artikel doppelt
 VERLAUF_MAX = 300
 FEHLER_VERLAUF_MAX = 100
 FEED_PFADE = ["/rss", "/feed", "/rss.xml", "/feed.xml", "/atom.xml", "/index.xml"]
 TRACKING = re.compile(r"^(utm_\w*|fbclid|gclid|dclid|mc_cid|mc_eid|ref|ref_src|ito|xtor|wt_mc|ns_\w+)$", re.I)
 MAX_WEITERLEITUNGEN = 5
-ERLAUBTE_AKTIONEN = {"jetzt_pruefen", "pausieren", "fortsetzen", "intervall", "testnachricht",
-                     "quellen_hinzufuegen", "quellen_entfernen", "tag_hinzufuegen", "tag_entfernen"}
+ERLAUBTE_AKTIONEN = {"jetzt_pruefen", "pausieren", "fortsetzen", "intervall", "max_alter", "testnachricht",
+                     "quellen_hinzufuegen", "quellen_entfernen", "tag_hinzufuegen", "tag_entfernen",
+                     "quellen_importieren", "tags_importieren"}
+STANDARD_EINSTELLUNGEN = {
+    "discord_webhook": "", "discord_webhook_fehler": "",
+    "zeitzone": "Europe/Vienna", "max_alter_stunden": 24, "intervall_minuten": 15,
+    "nur_mit_tags": False, "max_meldungen_pro_lauf": 25,
+}
+# Diese Einstellungen übernimmt der Bot ohne Neustart, sobald config.toml gespeichert wird.
+# Werte: (kleinster, größter) erlaubter Wert, None = ja/nein.
+LIVE_EINSTELLUNGEN = {"intervall_minuten": (5, 240), "max_alter_stunden": (1, MAX_ALTER_GRENZE), "nur_mit_tags": None}
 
 log = logging.getLogger("newsbot")
 session = requests.Session()
@@ -83,13 +93,13 @@ def lade_config() -> dict:
         sys.exit(f"Konfigurationsdatei fehlt: {CONFIG_DATEI}")
     with CONFIG_DATEI.open("rb") as f:
         cfg = tomllib.load(f)
-    standard = {
-        "discord_webhook": "", "discord_webhook_fehler": "",
-        "zeitzone": "Europe/Vienna", "max_alter_stunden": 24, "intervall_minuten": 15,
-        "nur_mit_tags": False, "max_meldungen_pro_lauf": 25,
-    }
-    for k, v in standard.items():
+    for k, v in STANDARD_EINSTELLUNGEN.items():
         cfg.setdefault(k, v)
+    for name in LIVE_EINSTELLUNGEN:
+        wert = pruefe_einstellung(name, cfg[name])
+        if wert is None:
+            sys.exit(f"{name} in config.toml hat einen ungültigen Wert.")
+        cfg[name] = wert
     cfg["discord_webhook"] = cfg["discord_webhook"].strip()
     cfg["discord_webhook_fehler"] = cfg["discord_webhook_fehler"].strip()
     d = cfg.setdefault("dashboard", {})
@@ -110,7 +120,7 @@ def lade_state() -> dict:
     leer = {
         "gesehen": {}, "feeds": {}, "fehler_gemeldet": {}, "fehler_dashboard": {},
         "verlauf": [], "fehler_verlauf": [], "sync_artikel": [], "sync_fehler": [], "sync_erledigt": [],
-        "pausiert": False, "intervall_minuten": None, "sofort": False,
+        "pausiert": False, "intervall_minuten": None, "max_alter_stunden": None, "config_stand": {}, "sofort": False,
         "letzter_lauf": None, "naechster_lauf": None, "letztes_ergebnis": "",
         "wochentag": "", "quellen_heute": 0, "push_abos": [],
     }
@@ -135,7 +145,70 @@ def speichere_state(state: dict) -> None:
 
 
 def intervall(cfg: dict, state: dict) -> int:
+    """Auf der Webseite eingestellt (state) oder sonst aus config.toml."""
     return int(state.get("intervall_minuten") or cfg["intervall_minuten"])
+
+
+def max_alter(cfg: dict, state: dict) -> int:
+    """Wie alt ein Artikel höchstens sein darf (Stunden) – Webseite oder config.toml."""
+    return int(state.get("max_alter_stunden") or cfg["max_alter_stunden"])
+
+
+def alter_text(stunden: int) -> str:
+    return f"{stunden // 24} Tage" if stunden >= 48 and stunden % 24 == 0 else f"{stunden} Stunden"
+
+
+def plane_naechsten_lauf(state: dict, minuten: int) -> None:
+    basis = datetime.fromisoformat(state["letzter_lauf"]) if state["letzter_lauf"] else jetzt_utc()
+    state["naechster_lauf"] = (basis + timedelta(minutes=minuten)).isoformat()
+
+
+def pruefe_einstellung(name: str, wert: object) -> int | bool | None:
+    grenzen = LIVE_EINSTELLUNGEN[name]
+    if grenzen is None:
+        return wert if isinstance(wert, bool) else None
+    if isinstance(wert, bool) or not isinstance(wert, (int, float)):
+        return None
+    return min(grenzen[1], max(grenzen[0], int(wert)))
+
+
+_config_zeitstempel: int | None = None
+
+
+def uebernimm_config_aenderungen(cfg: dict, state: dict) -> None:
+    """Liest config.toml neu, sobald sie gespeichert wurde – nur die LIVE_EINSTELLUNGEN.
+
+    Wer zuletzt ändert, gewinnt: Wurde ein Wert in der Datei geändert, gilt er, auch wenn er vorher
+    auf der Webseite anders eingestellt war. Eine spätere Änderung auf der Webseite gilt wieder vor
+    der Datei. (Zugangsdaten, Discord usw. brauchen weiterhin einen Neustart.)
+    """
+    global _config_zeitstempel
+    try:
+        zeitstempel = CONFIG_DATEI.stat().st_mtime_ns
+    except OSError:
+        return
+    if zeitstempel == _config_zeitstempel:
+        return
+    _config_zeitstempel = zeitstempel
+    try:
+        neu = tomllib.loads(CONFIG_DATEI.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as e:
+        log.warning("config.toml gerade nicht lesbar (%s) – bisherige Einstellungen bleiben.", e)
+        return
+    zuletzt = state.setdefault("config_stand", {})
+    for name in LIVE_EINSTELLUNGEN:
+        wert = pruefe_einstellung(name, neu.get(name, STANDARD_EINSTELLUNGEN[name]))
+        if wert is None:
+            log.warning("config.toml: %s hat einen ungültigen Wert – bisheriger Wert bleibt.", name)
+            continue
+        cfg[name] = wert
+        if name in zuletzt and zuletzt[name] != wert:
+            log.info("config.toml: %s = %s übernommen (ohne Neustart).", name, wert)
+            if name in state:
+                state[name] = None  # Datei gilt jetzt statt der Einstellung von der Webseite
+            if name == "intervall_minuten":
+                plane_naechsten_lauf(state, wert)
+        zuletzt[name] = wert
 
 
 # --------------------------------------------------------------------------- Quellen & Tags (CSV)
@@ -261,7 +334,7 @@ def text_aus_html(html: str, max_zeichen: int = 450) -> str:
     return text
 
 
-def lese_artikel(feed_inhalt: bytes, feed_url: str, jetzt: datetime, max_alter: timedelta) -> list[dict]:
+def lese_artikel(feed_inhalt: bytes, feed_url: str, jetzt: datetime, grenze: timedelta) -> list[dict]:
     d = feedparser.parse(feed_inhalt)
     medium = text_aus_html(d.feed.get("title") or urlparse(feed_url).netloc, 150)
     artikel = []
@@ -275,7 +348,7 @@ def lese_artikel(feed_inhalt: bytes, feed_url: str, jetzt: datetime, max_alter: 
             datum, datum_art = datetime(*e.updated_parsed[:6], tzinfo=timezone.utc), "aktualisiert"
         else:
             datum, datum_art = None, "unbekannt"
-        if datum and jetzt - datum > max_alter:
+        if datum and jetzt - datum > grenze:
             continue
         url = normalisiere_url(urljoin(feed_url, link))
         if not url.startswith(("http://", "https://")):
@@ -488,7 +561,7 @@ def durchlauf(cfg: dict, state: dict, test: bool = False) -> str:
     """Prüft alle heutigen Quellen. Gibt eine kurze Zusammenfassung zurück."""
     tz = ZoneInfo(cfg["zeitzone"])
     jetzt = jetzt_utc()
-    max_alter = timedelta(hours=cfg["max_alter_stunden"])
+    grenze_alter = timedelta(hours=max_alter(cfg, state))
 
     wochentag, quellen = heutige_quellen(cfg)
     tags, _ = listen.lade_tags(TAGS_DATEI)  # jedes Mal neu lesen → Änderungen gelten ohne Neustart
@@ -510,7 +583,7 @@ def durchlauf(cfg: dict, state: dict, test: bool = False) -> str:
         try:
             feed_url = state["feeds"].get(quelle) or finde_feed(quelle)
             state["feeds"][quelle] = feed_url
-            artikel = lese_artikel(hole(feed_url).content, feed_url, jetzt, max_alter)
+            artikel = lese_artikel(hole(feed_url).content, feed_url, jetzt, grenze_alter)
         except AbrufFehler as e:
             state["feeds"].pop(quelle, None)  # beim nächsten Mal Feed neu suchen
             melde_fehler(cfg, state, quelle, str(e), test)
@@ -565,6 +638,7 @@ def baue_status(cfg: dict, state: dict) -> dict:
     return {
         "pausiert": state["pausiert"],
         "intervall_minuten": intervall(cfg, state),
+        "max_alter_stunden": max_alter(cfg, state),
         "letzter_lauf": state["letzter_lauf"],
         "naechster_lauf": state["naechster_lauf"],
         "letztes_ergebnis": state["letztes_ergebnis"][:300],
@@ -757,9 +831,14 @@ def fuehre_befehl_aus(b: dict, cfg: dict, state: dict) -> str:
         if not isinstance(wert, int) or not 5 <= wert <= 240:
             return "ungültiges Intervall – ignoriert"
         state["intervall_minuten"] = wert
-        basis = datetime.fromisoformat(state["letzter_lauf"]) if state["letzter_lauf"] else jetzt_utc()
-        state["naechster_lauf"] = (basis + timedelta(minutes=wert)).isoformat()
+        plane_naechsten_lauf(state, wert)
         return f"Intervall auf {wert} Minuten gesetzt"
+    if aktion == "max_alter":
+        wert = b.get("wert")
+        if not isinstance(wert, int) or isinstance(wert, bool) or not 1 <= wert <= MAX_ALTER_GRENZE:
+            return "ungültiges Höchstalter – ignoriert"
+        state["max_alter_stunden"] = wert
+        return f"Artikel werden bis {alter_text(wert)} nach Erscheinen gemeldet"
     if aktion == "testnachricht":
         teile = []
         if cfg["discord_webhook"]:
@@ -772,13 +851,18 @@ def fuehre_befehl_aus(b: dict, cfg: dict, state: dict) -> str:
         return "; ".join(teile) or "kein Benachrichtigungsweg eingerichtet – auf der Seite „Benachrichtigungen einschalten“"
     # Quellen und Tags: listen.py prüft jeden Wert selbst, bevor etwas in eine Datei geschrieben wird.
     try:
-        if aktion in ("quellen_hinzufuegen", "quellen_entfernen"):
-            ergebnis = listen.aendere_quellen(QUELLEN_DATEI, aktion == "quellen_hinzufuegen", b.get("tage"), b.get("urls"))
+        if aktion in ("quellen_hinzufuegen", "quellen_entfernen", "quellen_importieren"):
+            if aktion == "quellen_importieren":
+                ergebnis = listen.importiere_quellen(QUELLEN_DATEI, b.get("quellen"))
+            else:
+                ergebnis = listen.aendere_quellen(QUELLEN_DATEI, aktion == "quellen_hinzufuegen", b.get("tage"), b.get("urls"))
             wochentag, heute = heutige_quellen(cfg)  # Statuskarte gleich richtig anzeigen
             state["wochentag"], state["quellen_heute"] = wochentag.capitalize(), len(heute)
             return ergebnis
         if aktion in ("tag_hinzufuegen", "tag_entfernen"):
             return listen.aendere_tags(TAGS_DATEI, aktion == "tag_hinzufuegen", b.get("tag"), b.get("woerter"))
+        if aktion == "tags_importieren":
+            return listen.importiere_tags(TAGS_DATEI, b.get("tags"))
     except listen.DateiGesperrt as e:
         return str(e)
     except OSError as e:
@@ -886,6 +970,7 @@ def main() -> None:
 
     try:
         state = lade_state()
+        uebernimm_config_aenderungen(cfg, state)
         if args.einmal:
             verarbeite_befehle(cfg, state)
             if not state["pausiert"] or state["sofort"]:
@@ -901,6 +986,7 @@ def main() -> None:
         pause = cfg["dashboard"]["sync_sekunden"] if cfg["dashboard"]["url"] else 30
         while True:
             try:
+                uebernimm_config_aenderungen(cfg, state)
                 verarbeite_befehle(cfg, state)
                 if faellig(state):
                     pruefen_und_merken(cfg, state)
