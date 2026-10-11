@@ -31,6 +31,7 @@ from typing import Annotated, Literal, Optional
 from urllib.parse import parse_qs, urlparse
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, ValidationError, model_validator
 
@@ -49,6 +50,7 @@ SERVER_START = time.time()
 ERLAUBTE_PUSH_HOSTS = (".googleapis.com", ".mozilla.com", ".mozaws.net", ".push.apple.com", ".notify.windows.com")
 
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+app.add_middleware(GZipMiddleware, minimum_size=1000)  # Artikeldaten etwa 6× kleiner – schont das Render-Datenvolumen
 
 
 # --------------------------------------------------------------------------- Prüfregeln für Quellen und Tags
@@ -529,7 +531,7 @@ def statisch(datei: str):
 async def login(request: Request):
     if zu_viele_fehlversuche():
         return RedirectResponse("/?fehler=gesperrt", status_code=303)
-    felder = parse_qs((await request.body()).decode("utf-8", "replace")[:2000])
+    felder = parse_qs((await lies_koerper(request, 4000)).decode("utf-8", "replace"))
     eingabe = (felder.get("passwort") or [""])[0]
     if not hmac.compare_digest(eingabe.encode(), PASSWORT.encode()):
         _fehlversuche.append(time.time())
@@ -564,8 +566,8 @@ def daten(request: Request):
     return speicher.ansicht()
 
 
-async def lies_json(request: Request, grenze: int):
-    """JSON lesen, aber nie mehr als `grenze` Bytes annehmen – auch wenn keine Größe angegeben ist."""
+async def lies_koerper(request: Request, grenze: int) -> bytes:
+    """Anfrage lesen, aber nie mehr als `grenze` Bytes annehmen – auch wenn keine Größe angegeben ist."""
     angabe = request.headers.get("content-length", "0")
     if not angabe.isdigit() or int(angabe) > grenze:
         raise HTTPException(413, "Zu groß.")
@@ -575,7 +577,11 @@ async def lies_json(request: Request, grenze: int):
         if groesse > grenze:
             raise HTTPException(413, "Zu groß.")
         teile.append(stueck)
-    return json.loads(b"".join(teile))
+    return b"".join(teile)
+
+
+async def lies_json(request: Request, grenze: int):
+    return json.loads(await lies_koerper(request, grenze))
 
 
 def lesbarer_fehler(e: ValueError) -> str:

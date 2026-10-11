@@ -64,9 +64,28 @@ def abo_ist_gueltig(abo: object) -> bool:
     if teile.scheme != "https" or not (teile.hostname or "").endswith(ERLAUBTE_PUSH_HOSTS):
         return False
     try:
-        return len(b64url_dekodieren(keys["p256dh"])) == 65 and len(b64url_dekodieren(keys["auth"])) == 16
+        p256dh = b64url_dekodieren(keys["p256dh"])
+        if len(p256dh) != 65 or len(b64url_dekodieren(keys["auth"])) != 16:
+            return False
+        ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP256R1(), p256dh)  # muss ein echter Kurvenpunkt sein
+        return True
     except (KeyError, TypeError, ValueError):
         return False
+
+
+MAX_NUTZLAST = 3000  # Web Push erlaubt rund 4 KB verschlüsselt
+
+
+def nutzlast(nachricht: dict) -> bytes:
+    """JSON für die Benachrichtigung – bei Bedarf gekürzt, aber nie mitten im JSON abgeschnitten."""
+    nachricht = dict(nachricht)
+    for kuerzen in (None, "text", "tag", "titel", "url"):
+        if kuerzen:
+            nachricht[kuerzen] = str(nachricht.get(kuerzen, ""))[:100 if kuerzen == "titel" else 0]
+        daten = json.dumps(nachricht, ensure_ascii=False).encode()
+        if len(daten) <= MAX_NUTZLAST:
+            return daten
+    return b"{}"
 
 
 def verschluessele(nachricht: bytes, p256dh: str, auth: str,
@@ -106,8 +125,7 @@ def sende(abo: dict, nachricht: dict, privat: ec.EllipticCurvePrivateKey, kontak
     """Schickt eine Benachrichtigung. Wirft PushAbgelaufen, wenn das Abo nicht mehr gilt."""
     if not abo_ist_gueltig(abo):
         raise PushAbgelaufen("ungültiges Abo")
-    daten = json.dumps(nachricht, ensure_ascii=False).encode()[:3000]
-    koerper = verschluessele(daten, abo["keys"]["p256dh"], abo["keys"]["auth"])
+    koerper = verschluessele(nutzlast(nachricht), abo["keys"]["p256dh"], abo["keys"]["auth"])
     r = session.post(abo["endpoint"], data=koerper, timeout=timeout, allow_redirects=False, headers={
         "Authorization": _vapid_kopf(abo["endpoint"], privat, kontakt),
         "Content-Encoding": "aes128gcm",
@@ -115,7 +133,9 @@ def sende(abo: dict, nachricht: dict, privat: ec.EllipticCurvePrivateKey, kontak
         "TTL": "86400",
         "Urgency": "normal",
     })
-    if r.status_code in (404, 410):
+    # 404/410: Gerät hat abbestellt. 400/401/403: Abo passt nicht (mehr) zum Schlüssel, z. B. nachdem
+    # vapid_privat.pem neu erzeugt wurde – das wird nie wieder funktionieren, also entfernen.
+    if r.status_code in (400, 401, 403, 404, 410):
         raise PushAbgelaufen(f"HTTP {r.status_code}")
     if r.status_code >= 400:
         raise requests.HTTPError(f"Push-Dienst antwortet HTTP {r.status_code}: {r.text[:200]}")

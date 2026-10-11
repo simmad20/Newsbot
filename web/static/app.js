@@ -731,5 +731,6 @@ document.querySelectorAll(".steuerung button[data-aktion]").forEach((k) => k.add
 // Erst starten, wenn auch verwaltung.js geladen ist
 document.addEventListener("DOMContentLoaded", () => {
   pushVorbereiten().finally(laden);
-  setInterval(laden, AKTUALISIEREN_MS);
+  // Nur abfragen, solange die Seite sichtbar ist – beim Zurückkommen wird sofort aktualisiert.
+  setInterval(() => { if (document.visibilityState === "visible") laden(); }, AKTUALISIEREN_MS);
 });

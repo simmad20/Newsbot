@@ -226,6 +226,16 @@ def _jsonld_artikel(bloecke: list[str]) -> dict:
     return {}
 
 
+def _erster(*werte: object) -> str:
+    """Erster nicht leerer Text – JSON-LD liefert manchmal Listen oder Objekte statt Text."""
+    for wert in werte:
+        if isinstance(wert, list):
+            wert = next((w for w in wert if isinstance(w, str) and w.strip()), None)
+        if isinstance(wert, str) and wert.strip():
+            return wert
+    return ""
+
+
 def _namen(wert: object) -> str:
     if isinstance(wert, str):
         return wert
@@ -254,9 +264,10 @@ def lies_artikelseite(html: str, url: str) -> dict:
     geaendert = lies_datum(ld.get("dateModified")) or lies_datum(m.get("article:modified_time"))
     canonical = urljoin(url, leser.canonical) if leser.canonical else ""
     return {
-        "titel": _text(ld.get("headline") or m.get("og:title") or m.get("twitter:title") or leser.titel, 250),
-        "teaser": _text(ld.get("description") or m.get("og:description") or m.get("description")
-                        or m.get("twitter:description"), 1000),
+        "titel": _text(_erster(ld.get("headline"), ld.get("name"), m.get("og:title"), m.get("twitter:title"),
+                               leser.titel), 250),
+        "teaser": _text(_erster(ld.get("description"), m.get("og:description"), m.get("description"),
+                                m.get("twitter:description")), 1000),
         "autor": _text(_namen(ld.get("author")) or m.get("author") or m.get("article:author"), 150),
         "datum": veroeffentlicht or geaendert,
         "datum_art": "veröffentlicht" if veroeffentlicht else "aktualisiert" if geaendert else "unbekannt",

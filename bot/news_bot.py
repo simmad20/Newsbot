@@ -52,7 +52,7 @@ QUELLEN_DATEI = BASIS / "quellen.csv"
 TAGS_DATEI = BASIS / "tags.csv"
 
 WOCHENTAGE = listen.WOCHENTAGE
-USER_AGENT = "PrivaterNewsBot/1.3 (Hobbyprojekt, RSS-Leser)"
+USER_AGENT = "PrivaterNewsBot/1.4 (Hobbyprojekt, liest RSS-Feeds und Sitemaps)"
 TIMEOUT = 20
 SYNC_TIMEOUT = 90  # Render-Free braucht nach dem Schlafen ca. 1 Minute zum Aufwachen
 PAUSE_ZWISCHEN_ABRUFEN = 1.0
@@ -243,6 +243,7 @@ def melde_ungueltige_zeilen(cfg: dict, state: dict, test: bool) -> None:
 # --------------------------------------------------------------------------- Netzwerk
 
 _robots: dict[str, RobotFileParser] = {}
+_robots_bis: dict[str, float] = {}  # robots.txt nach einem Tag neu laden (nach Fehlschlag nach einer Stunde)
 
 
 def pruefe_ziel(url: str) -> None:
@@ -295,14 +296,16 @@ def erlaubt(url: str) -> bool:
     teile = urlparse(url)
     basis = f"{teile.scheme}://{teile.netloc}"
     rp = _robots.get(basis)
-    if rp is None:
+    if rp is None or time.monotonic() > _robots_bis.get(basis, 0):
         rp = RobotFileParser()
+        gueltig = 24 * 3600
         try:
             r = sicher_abrufen(basis + "/robots.txt", MAX_ROBOTS_BYTES)
             rp.parse(r.text.splitlines() if r.status_code == 200 else [])
         except (requests.RequestException, AbrufFehler):
             rp.parse([])
-        _robots[basis] = rp
+            gueltig = 3600
+        _robots[basis], _robots_bis[basis] = rp, time.monotonic() + gueltig
     return rp.can_fetch(USER_AGENT, url)
 
 
@@ -321,15 +324,15 @@ def hole(url: str, max_bytes: int = MAX_SEITE_BYTES) -> requests.Response:
 
 # --------------------------------------------------------------------------- Feeds finden & lesen
 
-def ist_feed(inhalt: bytes) -> bool:
+def ist_feed(inhalt: bytes, leer_ok: bool = False) -> bool:
     d = feedparser.parse(inhalt)
-    return bool(d.version) and bool(d.entries)
+    return bool(d.version) and (leer_ok or bool(d.entries))
 
 
 def feed_in_seite(r: requests.Response) -> str | None:
     """Ist die Adresse selbst ein Feed? Sonst <link rel=alternate> auf der Seite, sonst übliche Pfade."""
     url = r.url
-    if ist_feed(r.content):
+    if ist_feed(r.content, leer_ok=True):  # die eingetragene Adresse ist selbst ein Feed (evtl. gerade leer)
         return url
     for tag in re.findall(r"<link\b[^>]*>", r.text, re.I):
         if re.search(r"rel=[\"']?alternate", tag, re.I) and re.search(
@@ -571,7 +574,7 @@ def lese_artikel(feed_inhalt: bytes, feed_url: str, jetzt: datetime, grenze: tim
         if datum and jetzt - datum > grenze:
             continue
         url = normalisiere_url(urljoin(feed_url, link))
-        if not url.startswith(("http://", "https://")):
+        if not url.startswith(("http://", "https://")) or len(url) > 2000:
             continue
         artikel.append({
             "schluessel": [url] + ([f"id:{e.id}"] if e.get("id") else []),
@@ -699,10 +702,12 @@ def sende_push_an_alle(cfg: dict, state: dict, nachricht: dict) -> tuple[int, in
             ok += 1
             bleiben.append(abo)
         except webpush.PushAbgelaufen as e:
-            log.info("Gerät hat Benachrichtigungen abbestellt (%s) – entfernt.", e)
+            log.info("Gerät hat Benachrichtigungen abbestellt oder das Abo gilt nicht mehr (%s) – entfernt.", e)
         except requests.RequestException as e:
             log.warning("Push fehlgeschlagen: %s", e)
             bleiben.append(abo)
+        except (ValueError, TypeError) as e:  # kaputtes Abo – würde sonst jede Meldung blockieren
+            log.warning("Ungültiges Benachrichtigungs-Abo entfernt (%s).", e)
     versucht = len(state["push_abos"])
     state["push_abos"] = bleiben
     return ok, versucht
@@ -751,7 +756,7 @@ def aendere_push_abos(cfg: dict, state: dict, aenderungen: list) -> None:
                                            "text": "Ab jetzt meldet sich der News-Bot hier bei neuen Artikeln.",
                                            "url": cfg["dashboard"]["url"] or ""},
                                   _vapid_schluessel, push_kontakt(cfg), session, TIMEOUT)
-                except webpush.PushAbgelaufen as e:
+                except (webpush.PushAbgelaufen, ValueError, TypeError) as e:
                     state["push_abos"] = vorher
                     log.warning("Neues Gerät nimmt keine Benachrichtigungen an (%s) – nicht gespeichert.", e)
                 except requests.RequestException as e:
@@ -762,10 +767,12 @@ def aendere_push_abos(cfg: dict, state: dict, aenderungen: list) -> None:
 # --------------------------------------------------------------------------- Durchlauf
 
 def merke_fuer_dashboard(state: dict, a: dict, gemeldet: bool) -> None:
+    # Längen wie in web/server.py (ArtikelIn) – ein zu langer Wert würde sonst die ganze Übertragung blockieren
     eintrag = {
-        "url": a["url"], "titel": a["titel"], "medium": a["medium"], "teaser": a["teaser"],
-        "autor": a["autor"], "datum": a["datum"].isoformat() if a["datum"] else None,
-        "datum_art": a["datum_art"], "tags": a["tags"], "gemeldet": gemeldet, "weg": a.get("weg", "feed"),
+        "url": a["url"], "titel": a["titel"][:300], "medium": a["medium"][:200], "teaser": a["teaser"][:1200],
+        "autor": a["autor"][:200], "datum": a["datum"].isoformat() if a["datum"] else None,
+        "datum_art": a["datum_art"], "tags": [t[:60] for t in a["tags"][:20]], "gemeldet": gemeldet,
+        "weg": a.get("weg", "feed"),
         "gefunden_um": jetzt_utc().isoformat(),
     }
     state["verlauf"] = (state["verlauf"] + [eintrag])[-VERLAUF_MAX:]
