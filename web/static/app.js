@@ -15,6 +15,17 @@ const AKTIONS_NAMEN = {
   intervall: "Intervall ändern",
   testnachricht: "Testbenachrichtigung",
 };
+const TAGE = [
+  ["montag", "Montag", "Mo"], ["dienstag", "Dienstag", "Di"], ["mittwoch", "Mittwoch", "Mi"],
+  ["donnerstag", "Donnerstag", "Do"], ["freitag", "Freitag", "Fr"], ["samstag", "Samstag", "Sa"],
+  ["sonntag", "Sonntag", "So"],
+];
+const WERKTAGE = TAGE.slice(0, 5).map(([k]) => k);
+const fmtWochentag = new Intl.DateTimeFormat("de-AT", { timeZone: ZONE, weekday: "long" });
+const heutigerTag = () => fmtWochentag.format(new Date()).toLowerCase();
+// Gleiche Regeln wie auf dem Server und im Bot (die prüfen trotzdem noch einmal selbst)
+const TAG_MUSTER = /^[\p{L}\p{N}][\p{L}\p{N}_ .&\/'+-]{0,39}$/u;
+const WORT_MUSTER = /^[\p{L}\p{N}][\p{L}\p{N}_ .&\/'+-]{0,58}\*?$/u;
 const ZUSTAND_NAMEN = { offen: "wartet auf den Bot", abgeholt: "wird ausgeführt" };
 
 let daten = null;
@@ -79,6 +90,31 @@ function uhrzeit(iso) {
   return isNaN(d) ? null : fmtZeit.format(d);
 }
 
+function anzahl(n, eins, viele) { return `${n} ${n === 1 ? eins : viele}`; }
+function kurzUrl(url) { return url.replace(/^https?:\/\//, "").replace(/\/$/, ""); }
+function einRaum(text) { return text.split(/\s+/).filter(Boolean).join(" "); }
+
+function tageText(tage) {
+  const gewaehlt = TAGE.filter(([k]) => tage.includes(k));
+  if (gewaehlt.length === 7) return "jeden Tag";
+  if (gewaehlt.length === 5 && gewaehlt.every(([k]) => WERKTAGE.includes(k))) return "Mo–Fr";
+  return gewaehlt.length === 1 ? gewaehlt[0][1] : gewaehlt.map(([, , kurz]) => kurz).join(", ");
+}
+
+function befehlName(b) {
+  const urls = b.urls || [];
+  const woerter = b.woerter || [];
+  const was = urls.length === 1 ? kurzUrl(urls[0]) : anzahl(urls.length, "Quelle", "Quellen");
+  switch (b.aktion) {
+    case "intervall": return `Intervall auf ${b.wert} Min.`;
+    case "quellen_hinzufuegen": return `${was} für ${tageText(b.tage || [])} hinzufügen`;
+    case "quellen_entfernen": return `${was} bei ${tageText(b.tage || [])} entfernen`;
+    case "tag_hinzufuegen": return `Tag „${b.tag}“: ${woerter.join(", ")} hinzufügen`;
+    case "tag_entfernen": return woerter.length ? `Tag „${b.tag}“: ${woerter.join(", ")} entfernen` : `Tag „${b.tag}“ löschen`;
+    default: return AKTIONS_NAMEN[b.aktion] || b.aktion;
+  }
+}
+
 function zeitpunktVor(sekunden) {
   const d = new Date(Date.now() - sekunden * 1000);
   return `${tagText(d) === "heute" ? "" : `${tagText(d)}, `}${fmtZeit.format(d)}`;
@@ -108,6 +144,8 @@ function zeichneAlles() {
   zeichnePush();
   zeichneFilterOptionen();
   zeichneTicker();
+  zeichneQuellen();
+  zeichneTags();
   zeichneFehler();
   zeichneBefehle();
 }
@@ -174,7 +212,7 @@ function zeichneSignal() {
 
 // ---------------------------------------------------------------- Reiter
 
-const REITER = ["artikel", "fehler", "befehle"];
+const REITER = ["artikel", "quellen", "tags", "fehler", "befehle"];
 
 function zeigeReiter(name, fokus = false) {
   for (const r of REITER) {
@@ -253,7 +291,7 @@ function zeichneTicker() {
       daten.bot.status
         ? daten.bot.status.quellen_heute
           ? "Noch keine Artikel. Mit „Jetzt prüfen“ startest du sofort eine Prüfung."
-          : "Noch keine Artikel. Für heute sind in quellen.xlsx keine Quellen eingetragen."
+          : "Noch keine Artikel. Für heute sind keine Quellen eingetragen – im Reiter „Quellen“ kannst du welche hinzufügen."
         : "Sobald der Bot verbunden ist, erscheinen hier die gefundenen Artikel."));
     return;
   }
@@ -340,7 +378,7 @@ function zeichneBefehle() {
     return;
   }
   liste.replaceChildren(...daten.befehle.map((b) => {
-    const name = AKTIONS_NAMEN[b.aktion] + (b.aktion === "intervall" ? ` auf ${b.wert} Min.` : "");
+    const name = befehlName(b);
     const stand = b.zustand === "erledigt" ? b.ergebnis : ZUSTAND_NAMEN[b.zustand];
     const wann = new Date(b.erstellt * 1000);
     return el("li", {},
@@ -351,6 +389,24 @@ function zeichneBefehle() {
 
 // ---------------------------------------------------------------- Befehle senden
 
+async function schickeBefehl(body) {
+  const r = await fetch("/api/befehl", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (r.status === 401) { location.reload(); throw new Error("Bitte neu anmelden."); }
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || `HTTP ${r.status}`);
+  return r.json();
+}
+
+function gesendetText(name) {
+  return daten?.bot.online
+    ? `„${name}“ gesendet. Der Bot führt den Befehl innerhalb von etwa 30 Sekunden aus.`
+    : `„${name}“ gespeichert. Der Bot läuft gerade nicht und führt ihn aus, sobald er wieder da ist.`;
+}
+
 async function sendeBefehl(knopf) {
   const aktion = knopf.dataset.aktion;
   const body = { aktion };
@@ -359,17 +415,8 @@ async function sendeBefehl(knopf) {
   knopf.disabled = true;
   const rueck = $("rueckmeldung");
   try {
-    const r = await fetch("/api/befehl", {
-      method: "POST",
-      credentials: "same-origin",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    if (r.status === 401) { location.reload(); return; }
-    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || `HTTP ${r.status}`);
-    rueck.textContent = daten?.bot.online
-      ? `„${AKTIONS_NAMEN[aktion]}“ gesendet. Der Bot führt den Befehl innerhalb von etwa 30 Sekunden aus.`
-      : `„${AKTIONS_NAMEN[aktion]}“ gespeichert. Der Bot läuft gerade nicht und führt ihn aus, sobald er wieder da ist.`;
+    await schickeBefehl(body);
+    rueck.textContent = gesendetText(AKTIONS_NAMEN[aktion]);
     laden();
   } catch (e) {
     rueck.textContent = `Befehl wurde nicht gesendet: ${e.message}`;
@@ -377,6 +424,191 @@ async function sendeBefehl(knopf) {
     knopf.disabled = false;
   }
 }
+
+// ---------------------------------------------------------------- Quellen & Tags
+
+// Pro Formular: auf welchen Befehl warten wir, um dessen Ergebnis anzuzeigen?
+const wartetAuf = { quellen: null, tags: null };
+
+function meldeErgebnis(bereich) {
+  const id = wartetAuf[bereich];
+  const b = id && daten.befehle.find((x) => x.id === id);
+  if (!b || b.zustand !== "erledigt") return;
+  $(`${bereich}-rueck`).textContent = `Erledigt: ${b.ergebnis}`;
+  wartetAuf[bereich] = null;
+}
+
+function ausstehend(praefix) {
+  const offen = daten.befehle.filter((b) => b.zustand !== "erledigt" && b.aktion.startsWith(praefix));
+  if (!offen.length) return null;
+  return el("div", { class: "ausstehend" },
+    el("p", { class: "ausstehend-titel" }, daten.bot.online ? "Wird gerade übertragen" : "Wartet auf den Bot"),
+    el("ul", {}, ...offen.map((b) => el("li", {}, befehlName(b)))));
+}
+
+const letzteAnsicht = { quellen: "", tags: "" };  // nur neu zeichnen, wenn sich etwas geändert hat
+
+function zeichneQuellen() {
+  const quellen = daten.listen ? daten.listen.quellen : null;
+  $("zahl-quellen").textContent = quellen && quellen.length ? String(quellen.length) : "";
+  meldeErgebnis("quellen");
+  const offen = ausstehend("quellen_");
+  const heute = heutigerTag();
+  const schluessel = JSON.stringify([quellen, offen && offen.textContent, heute]);
+  if (schluessel === letzteAnsicht.quellen) return;
+  letzteAnsicht.quellen = schluessel;
+
+  const teile = [offen];
+  if (!quellen) {
+    teile.push(el("p", { class: "leise" }, "Die aktuelle Liste erscheint, sobald der Bot verbunden ist. Hinzufügen kannst du trotzdem schon."));
+  } else {
+    for (const [k, lang] of TAGE) {
+      const urls = quellen.filter((q) => q.wochentag === k).map((q) => q.url);
+      teile.push(el("section", { class: `gruppe${k === heute ? " heute" : ""}`, "aria-label": lang },
+        el("div", { class: "gruppe-kopf" },
+          el("h3", { class: "gruppe-titel" }, lang,
+            el("span", { class: "zahl" }, urls.length ? String(urls.length) : ""),
+            k === heute ? el("span", { class: "heute-marke" }, "heute") : null)),
+        urls.length
+          ? el("ul", { class: "quellen" }, ...urls.map((u) => quelleZeile(k, lang, u)))
+          : el("p", { class: "leise klein" }, "Keine Quellen eingetragen.")));
+    }
+  }
+  $("quellen-liste").replaceChildren(...teile.filter(Boolean));
+}
+
+function quelleZeile(tag, lang, url) {
+  const sicher = sichereUrl(url);
+  return el("li", {},
+    sicher ? el("a", { href: sicher, target: "_blank", rel: "noopener noreferrer" }, kurzUrl(url)) : el("span", {}, url),
+    el("button", { type: "button", class: "entfernen", title: "Entfernen", "aria-label": `${kurzUrl(url)} bei ${lang} entfernen`,
+      "data-tag": tag, "data-url": url }, "×"));
+}
+
+function zeichneTags() {
+  const tags = daten.listen ? daten.listen.tags : null;
+  $("zahl-tags").textContent = tags && tags.length ? String(tags.length) : "";
+  meldeErgebnis("tags");
+  const offen = ausstehend("tag_");
+  const schluessel = JSON.stringify([tags, offen && offen.textContent]);
+  if (schluessel === letzteAnsicht.tags) return;
+  letzteAnsicht.tags = schluessel;
+
+  $("tag-namen").replaceChildren(...(tags || []).map((t) => el("option", { value: t.name })));
+  const teile = [offen];
+  if (!tags) {
+    teile.push(el("p", { class: "leise" }, "Die aktuellen Tags erscheinen, sobald der Bot verbunden ist. Hinzufügen kannst du trotzdem schon."));
+  } else if (!tags.length) {
+    teile.push(el("p", { class: "leise" }, "Noch keine Tags angelegt."));
+  } else {
+    for (const t of tags) {
+      teile.push(el("section", { class: "gruppe", "aria-label": `Tag ${t.name}` },
+        el("div", { class: "gruppe-kopf" },
+          el("h3", { class: "gruppe-titel" }, t.name, el("span", { class: "zahl" }, String(t.woerter.length))),
+          el("div", { class: "gruppe-aktionen" },
+            el("button", { type: "button", class: "link-knopf", "data-ergaenzen": t.name }, "Ergänzen"),
+            el("button", { type: "button", class: "link-knopf gefahr", "data-loeschen": t.name }, "Löschen"))),
+        el("ul", { class: "woerter" }, ...t.woerter.map((w) =>
+          el("li", {}, w,
+            el("button", { type: "button", class: "entfernen", title: "Entfernen", "aria-label": `${w} aus ${t.name} entfernen`,
+              "data-tag": t.name, "data-wort": w }, "×"))))));
+    }
+  }
+  $("tags-liste").replaceChildren(...teile.filter(Boolean));
+}
+
+async function listenBefehl(bereich, body, knopf) {
+  const rueck = $(`${bereich}-rueck`);
+  if (knopf) knopf.disabled = true;
+  try {
+    const neu = await schickeBefehl(body);
+    wartetAuf[bereich] = neu.id;
+    rueck.textContent = gesendetText(befehlName(body));
+    laden();
+    return true;
+  } catch (e) {
+    rueck.textContent = `Nicht gesendet: ${e.message}`;
+    return false;
+  } finally {
+    if (knopf) knopf.disabled = false;
+  }
+}
+
+function pruefeUrl(text) {
+  const roh = /^[a-z][a-z0-9+.-]*:\/\//i.test(text) ? text : `https://${text}`;
+  try {
+    const u = new URL(roh);
+    if ((u.protocol === "https:" || u.protocol === "http:") && u.hostname.includes(".") && !u.username && roh.length <= 500) return roh;
+  } catch { /* ungültig */ }
+  return null;
+}
+
+$("tage-wahl").replaceChildren(...TAGE.map(([k, lang, kurz]) =>
+  el("label", { class: "tag-chip", title: lang },
+    el("input", { type: "checkbox", value: k, "aria-label": lang }),
+    el("span", { "aria-hidden": "true" }, kurz))));
+
+document.querySelectorAll("[data-tage]").forEach((knopf) => knopf.addEventListener("click", () => {
+  const auswahl = { werktage: WERKTAGE, alle: TAGE.map(([k]) => k), keine: [] }[knopf.dataset.tage];
+  document.querySelectorAll("#tage-wahl input").forEach((c) => { c.checked = auswahl.includes(c.value); });
+}));
+
+$("quellen-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const rueck = $("quellen-rueck");
+  const feld = $("quellen-urls");
+  const eintraege = [...new Set(feld.value.split(/\s+/).filter(Boolean))];
+  const tage = [...document.querySelectorAll("#tage-wahl input:checked")].map((c) => c.value);
+  const falsch = eintraege.filter((u) => !pruefeUrl(u));
+  let problem = "";
+  if (!eintraege.length) problem = "Bitte mindestens eine Adresse eintragen.";
+  else if (falsch.length) problem = `Keine gültige Webadresse: ${falsch.slice(0, 3).join(", ")}`;
+  else if (eintraege.length > 50) problem = "Höchstens 50 Adressen auf einmal.";
+  else if (!tage.length) problem = "Bitte mindestens einen Wochentag auswählen.";
+  if (problem) { rueck.textContent = problem; return; }
+  const urls = [...new Set(eintraege.map(pruefeUrl))];
+  if (await listenBefehl("quellen", { aktion: "quellen_hinzufuegen", tage, urls }, e.submitter)) feld.value = "";
+});
+
+$("quellen-liste").addEventListener("click", (e) => {
+  const knopf = e.target.closest("button.entfernen");
+  if (!knopf) return;
+  const lang = TAGE.find(([k]) => k === knopf.dataset.tag)[1];
+  if (!confirm(`${kurzUrl(knopf.dataset.url)} bei ${lang} entfernen?`)) return;
+  listenBefehl("quellen", { aktion: "quellen_entfernen", tage: [knopf.dataset.tag], urls: [knopf.dataset.url] }, knopf);
+});
+
+$("tags-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const rueck = $("tags-rueck");
+  const tag = einRaum($("tag-name").value);
+  const woerter = [...new Set($("tag-woerter").value.split(/[,;\n]+/).map(einRaum).filter(Boolean))];
+  const falsch = woerter.filter((w) => !WORT_MUSTER.test(w));
+  let problem = "";
+  if (!tag) problem = "Bitte einen Tag-Namen eintragen.";
+  else if (!TAG_MUSTER.test(tag)) problem = "Tag-Name: nur Buchstaben, Ziffern, Leerzeichen und - . & / ' + (höchstens 40 Zeichen, am Anfang ein Buchstabe oder eine Ziffer).";
+  else if (!woerter.length) problem = "Bitte mindestens ein Schlagwort eintragen.";
+  else if (falsch.length) problem = `Nicht erlaubt: ${falsch.slice(0, 3).join(", ")} – nur Buchstaben, Ziffern, Leerzeichen, - . & / ' + und * am Ende.`;
+  else if (woerter.length > 50) problem = "Höchstens 50 Schlagwörter auf einmal.";
+  if (problem) { rueck.textContent = problem; return; }
+  if (await listenBefehl("tags", { aktion: "tag_hinzufuegen", tag, woerter }, e.submitter)) $("tag-woerter").value = "";
+});
+
+$("tags-liste").addEventListener("click", (e) => {
+  const knopf = e.target.closest("button");
+  if (!knopf) return;
+  if (knopf.dataset.ergaenzen) {
+    $("tag-name").value = knopf.dataset.ergaenzen;
+    $("tag-woerter").focus();
+    $("tags-form").scrollIntoView({ block: "nearest" });
+  } else if (knopf.dataset.loeschen) {
+    if (!confirm(`Tag „${knopf.dataset.loeschen}“ mit allen Schlagwörtern löschen?`)) return;
+    listenBefehl("tags", { aktion: "tag_entfernen", tag: knopf.dataset.loeschen, woerter: [] }, knopf);
+  } else if (knopf.dataset.wort) {
+    if (!confirm(`„${knopf.dataset.wort}“ aus „${knopf.dataset.tag}“ entfernen?`)) return;
+    listenBefehl("tags", { aktion: "tag_entfernen", tag: knopf.dataset.tag, woerter: [knopf.dataset.wort] }, knopf);
+  }
+});
 
 // ---------------------------------------------------------------- Browser-Benachrichtigungen
 

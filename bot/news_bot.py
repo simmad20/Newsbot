@@ -1,10 +1,10 @@
 """News-Bot (Hobby-Version) – läuft auf deinem PC.
 
-Liest aus einer Excel-Datei die Quellen für den heutigen Wochentag, prüft deren
-RSS/Atom-Feeds auf neue Artikel (max. 24 h alt) und meldet sie als
-Browser-Benachrichtigung über dein Dashboard auf Render und/oder an Discord.
-Das Dashboard zeigt Status, Artikel und Fehler und nimmt Befehle entgegen.
-Alles Gemerkte liegt in state.json.
+Liest aus quellen.csv die Quellen für den heutigen Wochentag, prüft deren
+RSS/Atom-Feeds auf neue Artikel (max. 24 h alt), vergibt Tags laut tags.csv und
+meldet sie als Browser-Benachrichtigung über dein Dashboard auf Render und/oder an
+Discord. Das Dashboard zeigt Status, Artikel, Fehler, Quellen und Tags und nimmt
+Befehle entgegen – auch neue Quellen und Tags. Alles Gemerkte liegt in state.json.
 
 Aufruf:
     python news_bot.py            # läuft dauerhaft (empfohlen, mit Dashboard)
@@ -15,10 +15,13 @@ from __future__ import annotations
 
 import argparse
 import copy
+import hashlib
+import ipaddress
 import json
 import logging
 import os
 import re
+import socket
 import sys
 import threading
 import time
@@ -33,8 +36,8 @@ from zoneinfo import ZoneInfo
 
 import feedparser
 import requests
-from openpyxl import load_workbook
 
+import listen
 import webpush
 
 BASIS = Path(__file__).resolve().parent
@@ -43,9 +46,11 @@ STATE_DATEI = BASIS / "state.json"
 LOCK_DATEI = BASIS / "newsbot.lock"
 LOG_DATEI = BASIS / "newsbot.log"
 VAPID_DATEI = BASIS / "vapid_privat.pem"  # geheimer Schlüssel für Browser-Benachrichtigungen
+QUELLEN_DATEI = BASIS / "quellen.csv"
+TAGS_DATEI = BASIS / "tags.csv"
 
-WOCHENTAGE = ["montag", "dienstag", "mittwoch", "donnerstag", "freitag", "samstag", "sonntag"]
-USER_AGENT = "PrivaterNewsBot/1.2 (Hobbyprojekt, RSS-Leser)"
+WOCHENTAGE = listen.WOCHENTAGE
+USER_AGENT = "PrivaterNewsBot/1.3 (Hobbyprojekt, RSS-Leser)"
 TIMEOUT = 20
 SYNC_TIMEOUT = 90  # Render-Free braucht nach dem Schlafen ca. 1 Minute zum Aufwachen
 PAUSE_ZWISCHEN_ABRUFEN = 1.0
@@ -54,7 +59,9 @@ VERLAUF_MAX = 300
 FEHLER_VERLAUF_MAX = 100
 FEED_PFADE = ["/rss", "/feed", "/rss.xml", "/feed.xml", "/atom.xml", "/index.xml"]
 TRACKING = re.compile(r"^(utm_\w*|fbclid|gclid|dclid|mc_cid|mc_eid|ref|ref_src|ito|xtor|wt_mc|ns_\w+)$", re.I)
-ERLAUBTE_AKTIONEN = {"jetzt_pruefen", "pausieren", "fortsetzen", "intervall", "testnachricht"}
+MAX_WEITERLEITUNGEN = 5
+ERLAUBTE_AKTIONEN = {"jetzt_pruefen", "pausieren", "fortsetzen", "intervall", "testnachricht",
+                     "quellen_hinzufuegen", "quellen_entfernen", "tag_hinzufuegen", "tag_entfernen"}
 
 log = logging.getLogger("newsbot")
 session = requests.Session()
@@ -77,9 +84,9 @@ def lade_config() -> dict:
     with CONFIG_DATEI.open("rb") as f:
         cfg = tomllib.load(f)
     standard = {
-        "excel_datei": "quellen.xlsx", "discord_webhook": "", "discord_webhook_fehler": "",
+        "discord_webhook": "", "discord_webhook_fehler": "",
         "zeitzone": "Europe/Vienna", "max_alter_stunden": 24, "intervall_minuten": 15,
-        "nur_mit_tags": False, "max_meldungen_pro_lauf": 25, "tags": {},
+        "nur_mit_tags": False, "max_meldungen_pro_lauf": 25,
     }
     for k, v in standard.items():
         cfg.setdefault(k, v)
@@ -131,46 +138,56 @@ def intervall(cfg: dict, state: dict) -> int:
     return int(state.get("intervall_minuten") or cfg["intervall_minuten"])
 
 
-# --------------------------------------------------------------------------- Excel
+# --------------------------------------------------------------------------- Quellen & Tags (CSV)
 
-def lese_quellen(excel: Path, wochentag: str) -> list[str]:
-    """Sucht in allen Tabellenblättern eine Kopfzelle mit dem Wochentag und sammelt die URLs darunter."""
-    if not excel.exists():
-        raise FileNotFoundError(f"Excel-Datei nicht gefunden: {excel}")
-    wb = load_workbook(excel, read_only=True, data_only=True)
-    rohwerte: list = []
-    try:
-        for ws in wb.worksheets:
-            zeilen = list(ws.iter_rows(values_only=True))
-            for z_idx, zeile in enumerate(zeilen[:15]):
-                for s_idx, zelle in enumerate(zeile):
-                    if isinstance(zelle, str) and zelle.strip().lower() == wochentag:
-                        rohwerte += [z[s_idx] for z in zeilen[z_idx + 1:] if s_idx < len(z)]
-    finally:
-        wb.close()
-    return bereinige_urls(rohwerte)
+def heutige_quellen(cfg: dict) -> tuple[str, list[str]]:
+    wochentag = WOCHENTAGE[datetime.now(ZoneInfo(cfg["zeitzone"])).weekday()]
+    quellen, _ = listen.lade_quellen(QUELLEN_DATEI)
+    return wochentag, [u for t, u in quellen if t == wochentag]
 
 
-def bereinige_urls(werte: list) -> list[str]:
-    ergebnis: list[str] = []
-    for wert in werte:
-        if wert is None or not str(wert).strip():
-            continue
-        url = str(wert).strip()
-        if "://" not in url:
-            url = "https://" + url
-        teile = urlparse(url)
-        if teile.scheme not in ("http", "https") or "." not in teile.netloc or " " in url:
-            log.warning("Ungültige URL in Excel übersprungen: %r", wert)
-            continue
-        if url not in ergebnis:
-            ergebnis.append(url)
-    return ergebnis
+def melde_ungueltige_zeilen(cfg: dict, state: dict, test: bool) -> None:
+    """Von Hand eingetragene Zeilen, die der Bot nicht verwenden darf – im Log und auf der Seite zeigen."""
+    _, falsche_quellen = listen.lade_quellen(QUELLEN_DATEI)
+    _, falsche_tags = listen.lade_tags(TAGS_DATEI)
+    for datei, zeilen in ((QUELLEN_DATEI, falsche_quellen), (TAGS_DATEI, falsche_tags)):
+        for zeile in zeilen[:5]:
+            inhalt = ";".join(zeile)[:200]
+            melde_fehler(cfg, state, f"{datei.name}: {inhalt}",
+                         f"Zeile in {datei.name} ungültig und übersprungen: {inhalt}", test, discord=False)
 
 
 # --------------------------------------------------------------------------- Netzwerk
 
 _robots: dict[str, RobotFileParser] = {}
+
+
+def pruefe_ziel(url: str) -> None:
+    """Der Bot ruft nur öffentliche Server im Internet ab – nie deinen PC, Router oder andere Geräte
+    im Heimnetz. Geprüft wird die tatsächliche IP-Adresse, auch nach jeder Weiterleitung."""
+    teile = urlparse(url)
+    if teile.scheme not in ("http", "https") or not teile.hostname:
+        raise AbrufFehler(f"{url}: keine gültige Webadresse")
+    try:
+        port = teile.port or (443 if teile.scheme == "https" else 80)
+        adressen = socket.getaddrinfo(teile.hostname, port, proto=socket.IPPROTO_TCP)
+    except (OSError, UnicodeError, ValueError) as e:
+        raise AbrufFehler(f"{url}: Adresse nicht gefunden") from e
+    for *_, sockaddr in adressen:
+        if not listen.ist_oeffentliche_ip(ipaddress.ip_address(str(sockaddr[0]).split("%")[0])):
+            raise AbrufFehler(f"{url}: zeigt auf ein privates Netz – aus Sicherheitsgründen gesperrt")
+
+
+def sicher_abrufen(url: str) -> requests.Response:
+    """Wie session.get, folgt Weiterleitungen aber selbst und prüft jedes Ziel."""
+    for _ in range(MAX_WEITERLEITUNGEN + 1):
+        pruefe_ziel(url)
+        r = session.get(url, timeout=TIMEOUT, allow_redirects=False)
+        if not r.is_redirect:
+            return r
+        r.close()
+        url = urljoin(url, r.headers["location"])
+    raise AbrufFehler(f"{url}: zu viele Weiterleitungen")
 
 
 def erlaubt(url: str) -> bool:
@@ -181,9 +198,9 @@ def erlaubt(url: str) -> bool:
     if rp is None:
         rp = RobotFileParser()
         try:
-            r = session.get(basis + "/robots.txt", timeout=TIMEOUT)
+            r = sicher_abrufen(basis + "/robots.txt")
             rp.parse(r.text.splitlines() if r.status_code == 200 else [])
-        except requests.RequestException:
+        except (requests.RequestException, AbrufFehler):
             rp.parse([])
         _robots[basis] = rp
     return rp.can_fetch(USER_AGENT, url)
@@ -194,7 +211,7 @@ def hole(url: str) -> requests.Response:
         raise AbrufFehler(f"robots.txt verbietet den Abruf von {url}")
     time.sleep(PAUSE_ZWISCHEN_ABRUFEN)
     try:
-        r = session.get(url, timeout=TIMEOUT)
+        r = sicher_abrufen(url)
     except requests.RequestException as e:
         raise AbrufFehler(f"{url}: {type(e).__name__}") from e
     if r.status_code != 200:
@@ -228,7 +245,7 @@ def finde_feed(url: str) -> str:
                 return kandidat
         except AbrufFehler:
             continue
-    raise AbrufFehler(f"Kein RSS/Atom-Feed gefunden für {url} – trage die Feed-URL direkt in die Excel ein.")
+    raise AbrufFehler(f"Kein RSS/Atom-Feed gefunden für {url} – trage die Feed-URL direkt als Quelle ein.")
 
 
 def normalisiere_url(url: str) -> str:
@@ -345,7 +362,7 @@ def baue_meldung(a: dict, tz: ZoneInfo) -> dict:
     }
 
 
-def melde_fehler(cfg: dict, state: dict, quelle: str, grund: str, test: bool) -> None:
+def melde_fehler(cfg: dict, state: dict, quelle: str, grund: str, test: bool, discord: bool = True) -> None:
     log.warning("Quelle %s: %s", quelle, grund)
     if test:
         return
@@ -358,6 +375,8 @@ def melde_fehler(cfg: dict, state: dict, quelle: str, grund: str, test: bool) ->
         state["sync_fehler"] = (state["sync_fehler"] + [eintrag])[-200:]
         state["fehler_dashboard"][quelle] = jetzt.isoformat()
     # Discord: höchstens eine Meldung pro Quelle und Tag
+    if not discord:
+        return
     heute = datetime.now(ZoneInfo(cfg["zeitzone"])).date().isoformat()
     if state["fehler_gemeldet"].get(quelle) == heute:
         return
@@ -469,12 +488,11 @@ def durchlauf(cfg: dict, state: dict, test: bool = False) -> str:
     """Prüft alle heutigen Quellen. Gibt eine kurze Zusammenfassung zurück."""
     tz = ZoneInfo(cfg["zeitzone"])
     jetzt = jetzt_utc()
-    wochentag = WOCHENTAGE[datetime.now(tz).weekday()]
     max_alter = timedelta(hours=cfg["max_alter_stunden"])
 
-    excel = Path(cfg["excel_datei"])
-    excel = excel if excel.is_absolute() else BASIS / excel
-    quellen = lese_quellen(excel, wochentag)
+    wochentag, quellen = heutige_quellen(cfg)
+    tags, _ = listen.lade_tags(TAGS_DATEI)  # jedes Mal neu lesen → Änderungen gelten ohne Neustart
+    melde_ungueltige_zeilen(cfg, state, test)
     state["wochentag"], state["quellen_heute"] = wochentag.capitalize(), len(quellen)
     if not quellen:
         log.info("Für %s sind keine Quellen eingetragen – nichts zu tun.", wochentag.capitalize())
@@ -502,7 +520,7 @@ def durchlauf(cfg: dict, state: dict, test: bool = False) -> str:
             if any(s in state["gesehen"] or s in schon_im_lauf for s in a["schluessel"]):
                 continue
             schon_im_lauf.update(a["schluessel"])
-            a["tags"] = finde_tags(f"{a['titel']} {a['teaser']}", cfg["tags"])
+            a["tags"] = finde_tags(f"{a['titel']} {a['teaser']}", tags)
             neue.append(a)
 
     neue.sort(key=lambda a: a["datum"] or jetzt)  # älteste zuerst
@@ -566,6 +584,7 @@ def baue_status(cfg: dict, state: dict) -> dict:
 _puls = {"kontakt": 0.0, "versuch": 0.0, "pruefung": None, "geaendert": False}
 _puls_lock = threading.Lock()
 _erster_sync = True  # nach dem Start schickt der Bot einmal seinen kompletten Stand
+_listen_gesendet: str | None = None  # Prüfsumme der Quellen/Tags, die das Dashboard schon kennt
 _abgemeldet = False
 
 
@@ -641,13 +660,27 @@ def fange_fenster_schliessen_ab(cfg: dict) -> None:
 _fenster_handler = None
 
 
+def baue_listen() -> tuple[dict | None, str | None]:
+    """Aktuelle Quellen und Tags für die Webseite – plus Prüfsumme, um nur Änderungen zu schicken."""
+    try:
+        quellen, _ = listen.lade_quellen(QUELLEN_DATEI)
+        tags, _ = listen.lade_tags(TAGS_DATEI)
+    except OSError as e:
+        log.warning("Quellen/Tags nicht lesbar: %s", e)
+        return None, None
+    daten = {"quellen": [{"wochentag": t, "url": u} for t, u in quellen],
+             "tags": [{"name": n, "woerter": w} for n, w in tags.items()]}
+    return daten, hashlib.sha256(json.dumps(daten, sort_keys=True).encode()).hexdigest()
+
+
 def synchronisiere(cfg: dict, state: dict) -> list[dict]:
     """Schickt Status/Neues an das Dashboard und holt offene Befehle ab."""
-    global _erster_sync
+    global _erster_sync, _listen_gesendet
     d = cfg["dashboard"]
     if not d["url"]:
         return []
     kopf = {"Authorization": f"Bearer {d['bot_token']}"}
+    listen_daten, pruefsumme = baue_listen()
     if _erster_sync:
         # Kompletter Stand statt nur Neues – so übernimmt die Seite auch einen geleerten Bot.
         nutzlast = {"status": baue_status(cfg, state), "artikel": state["verlauf"],
@@ -660,6 +693,8 @@ def synchronisiere(cfg: dict, state: dict) -> list[dict]:
             "erledigt": state["sync_erledigt"][-100:],
             "snapshot": False,
         }
+    neu_fuer_seite = nutzlast["snapshot"] or pruefsumme != _listen_gesendet
+    nutzlast["listen"] = listen_daten if neu_fuer_seite else None
     befehle: list[dict] = []
     for _ in range(2):
         try:
@@ -680,6 +715,8 @@ def synchronisiere(cfg: dict, state: dict) -> list[dict]:
             return befehle
         merke_kontakt()
         _erster_sync = False
+        if nutzlast["listen"] is not None:
+            _listen_gesendet = pruefsumme
         state["sync_artikel"], state["sync_fehler"], state["sync_erledigt"] = [], [], []
         befehle += antwort.get("befehle", [])
         geraete_geaendert = bool(antwort.get("push_aenderungen"))
@@ -689,11 +726,12 @@ def synchronisiere(cfg: dict, state: dict) -> list[dict]:
             # Render wurde neu gestartet und hat nichts mehr im Speicher → kompletten Verlauf schicken
             log.info("Dashboard ist leer (Neustart bei Render) – schicke kompletten Verlauf.")
             nutzlast.update(status=baue_status(cfg, state), artikel=state["verlauf"],
-                            fehler=state["fehler_verlauf"], erledigt=[], snapshot=True)
+                            fehler=state["fehler_verlauf"], erledigt=[], snapshot=True, listen=listen_daten)
             continue
         if geraete_geaendert:
             # neue Geräteanzahl sofort auf die Seite bringen
-            nutzlast.update(status=baue_status(cfg, state), artikel=[], fehler=[], erledigt=[], snapshot=False)
+            nutzlast.update(status=baue_status(cfg, state), artikel=[], fehler=[], erledigt=[], snapshot=False,
+                            listen=None)
             continue
         break
     return befehle
@@ -732,15 +770,33 @@ def fuehre_befehl_aus(b: dict, cfg: dict, state: dict) -> str:
         if versucht:
             teile.append(f"Browser: an {ok} von {versucht} Gerät(en) gesendet")
         return "; ".join(teile) or "kein Benachrichtigungsweg eingerichtet – auf der Seite „Benachrichtigungen einschalten“"
+    # Quellen und Tags: listen.py prüft jeden Wert selbst, bevor etwas in eine Datei geschrieben wird.
+    try:
+        if aktion in ("quellen_hinzufuegen", "quellen_entfernen"):
+            ergebnis = listen.aendere_quellen(QUELLEN_DATEI, aktion == "quellen_hinzufuegen", b.get("tage"), b.get("urls"))
+            wochentag, heute = heutige_quellen(cfg)  # Statuskarte gleich richtig anzeigen
+            state["wochentag"], state["quellen_heute"] = wochentag.capitalize(), len(heute)
+            return ergebnis
+        if aktion in ("tag_hinzufuegen", "tag_entfernen"):
+            return listen.aendere_tags(TAGS_DATEI, aktion == "tag_hinzufuegen", b.get("tag"), b.get("woerter"))
+    except listen.DateiGesperrt as e:
+        return str(e)
+    except OSError as e:
+        log.error("Datei konnte nicht geändert werden: %s", e)
+        return f"Datei konnte nicht geändert werden ({type(e).__name__}) – nichts geändert"
     return "ignoriert"
 
 
 def verarbeite_befehle(cfg: dict, state: dict) -> None:
-    for b in synchronisiere(cfg, state):
-        ergebnis = fuehre_befehl_aus(b, cfg, state)
-        log.info("Befehl %s: %s", b.get("aktion"), ergebnis)
-        state["sync_erledigt"].append({"id": str(b.get("id", ""))[:40], "ergebnis": ergebnis})
-        speichere_state(state)
+    for _ in range(3):  # Ergebnis (und geänderte Listen) gleich zurückmelden, statt 30 s zu warten
+        befehle = synchronisiere(cfg, state)
+        if not befehle:
+            return
+        for b in befehle:
+            ergebnis = fuehre_befehl_aus(b, cfg, state)
+            log.info("Befehl %s: %s", b.get("aktion"), ergebnis)
+            state["sync_erledigt"].append({"id": str(b.get("id", ""))[:40], "ergebnis": ergebnis[:300]})
+            speichere_state(state)
 
 
 def faellig(state: dict) -> bool:
@@ -754,9 +810,6 @@ def faellig(state: dict) -> bool:
 def pruefen_und_merken(cfg: dict, state: dict) -> None:
     try:
         ergebnis = durchlauf(cfg, state)
-    except FileNotFoundError as e:
-        log.error("%s", e)
-        ergebnis = str(e)
     except Exception as e:  # der Bot soll nie wegen eines einzelnen Problems stehen bleiben
         log.exception("Unerwarteter Fehler im Durchlauf")
         ergebnis = f"Fehler: {type(e).__name__}"
@@ -809,13 +862,14 @@ def hole_lock() -> bool:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Kleiner News-Bot für Discord")
+    parser = argparse.ArgumentParser(description="Kleiner News-Bot mit eigener Webseite")
     gruppe = parser.add_mutually_exclusive_group()
     gruppe.add_argument("--einmal", action="store_true", help="genau ein Durchlauf")
     gruppe.add_argument("--test", action="store_true", help="ein Durchlauf, nichts senden oder speichern")
     args = parser.parse_args()
     richte_logging_ein()
     cfg = lade_config()
+    listen.richte_ein(QUELLEN_DATEI, TAGS_DATEI, cfg.get("tags"))
 
     if args.test:
         durchlauf(cfg, copy.deepcopy(lade_state()), test=True)

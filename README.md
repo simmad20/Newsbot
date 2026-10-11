@@ -6,8 +6,9 @@ Ein kleiner Nachrichten-Bot für den Eigengebrauch – komplett kostenlos, ohne 
    Dein PC                                   Render (kostenlos)
  ┌──────────────────────┐   alle 30 s     ┌──────────────────────────┐
  │ bot/news_bot.py      │ ──────────────► │ web/server.py            │ ◄── du im Browser
- │ • liest quellen.xlsx │  Status, neue   │ • Seite mit Login        │     (PC oder Handy)
- │ • prüft RSS-Feeds    │  Artikel, Fehler│ • Artikel, Filter, Fehler│
+ │ • quellen.csv,       │  Status, neue   │ • Seite mit Login        │     (PC oder Handy)
+ │   tags.csv           │  Artikel, Listen│ • Artikel, Quellen, Tags │
+ │ • prüft RSS-Feeds    │                 │ • Fehler                 │
  │ • schickt Benach-    │ ◄────────────── │ • Knöpfe für Befehle     │
  │   richtigungen       │  Befehle, Geräte└──────────────────────────┘
  │ • state.json         │
@@ -37,8 +38,9 @@ Kosten: **0 €** (Render Free, GitHub Free). Discord ist optional.
    .venv\Scripts\activate
    pip install -r requirements.txt
    ```
-3. **Quellen:** `bot/quellen.xlsx` mit deinen Quellen füllen (oder deine Datei dort ablegen).
-   Wichtig ist nur eine Kopfzelle „Montag“, „Dienstag“ … mit den URLs darunter.
+3. **Quellen und Tags:** Beim ersten Start legt der Bot `bot/quellen.csv` und `bot/tags.csv` an.
+   Am einfachsten trägst du später alles über die Webseite ein (Reiter „Quellen“ und „Tags“).
+   Von Hand geht es auch, mit Excel oder einem Texteditor – siehe „Quellen und Tags“ unten.
 4. **Probelauf:** `python news_bot.py --test` zeigt nur in der Konsole, was gefunden wird.
 
 ## Teil 2: Webseite auf Render
@@ -47,7 +49,7 @@ Kosten: **0 €** (Render Free, GitHub Free). Discord ist optional.
    File → Add local repository → `C:\NewsBot` → „create a repository“ → „Publish repository“,
    Häkchen **„Keep this code private“** gesetzt lassen.
    Die Datei `.gitignore` sorgt dafür, dass `config.toml`, `state.json`, `vapid_privat.pem`
-   und deine Excel **nicht** hochgeladen werden.
+   und deine Quellen/Tags (`quellen.csv`, `tags.csv`) **nicht** hochgeladen werden.
 2. **Render:** Konto auf render.com anlegen (am einfachsten „mit GitHub anmelden“).
    **New → Blueprint** → dein Repository wählen. Render fragt nach `DASHBOARD_PASSWORT` –
    wähle ein gutes Passwort (mind. 10 Zeichen). Warten, bis der Dienst „Live“ ist.
@@ -102,6 +104,8 @@ Vorher ein offenes Konsolenfenster mit dem Bot schließen – zweimal gleichzeit
 | Testbenachrichtigung | schickt eine Probe an alle eingeschalteten Geräte (und Discord, falls eingerichtet) |
 | Benachrichtigungen ein/aus | für das Gerät, auf dem du gerade bist |
 | Reiter „Artikel“ | nach Tagen gruppiert, je 30 auf einmal („Weitere anzeigen“); Suche, Filter nach Tag und Medium, „nur gemeldete“; **neu** = seit deinem letzten Besuch |
+| Reiter „Quellen“ | alle Quellen nach Wochentag; neue hinzufügen (mehrere auf einmal, für einen oder mehrere Tage), einzelne entfernen |
+| Reiter „Tags“ | alle Tags mit ihren Schlagwörtern; Tags anlegen, Schlagwörter ergänzen oder entfernen, Tags löschen |
 | Reiter „Fehler“ / „Befehle“ | welche Quellen nicht gingen, was mit deinen Befehlen passiert ist |
 
 **Woher die Seite weiß, ob der Bot läuft:** Der Bot meldet sich alle 30 Sekunden, auch mitten in
@@ -116,13 +120,57 @@ Bot nur bei Artikeln zu deinen Themen. Auf der Seite stehen trotzdem alle neuen 
 
 | Du willst … | So geht's | Neustart nötig? |
 |---|---|---|
-| Quellen ändern | Excel bearbeiten und speichern | nein |
-| Tags/Schlagwörter oder `nur_mit_tags` ändern | `config.toml` bearbeiten | **ja** |
+| Quellen ändern | Reiter „Quellen“ auf der Seite – oder `quellen.csv` bearbeiten | nein |
+| Tags/Schlagwörter ändern | Reiter „Tags“ auf der Seite – oder `tags.csv` bearbeiten | nein |
+| `nur_mit_tags` ändern | `config.toml` bearbeiten | **ja** |
 | Pausieren, Intervall, sofort prüfen | Knöpfe auf der Seite | nein |
 | Neues Handy dazu | dort „Benachrichtigungen einschalten“ | nein |
 
 Neustart ohne Fenster: im Task-Manager „pythonw.exe“ beenden und die Verknüpfung im
 Autostart-Ordner doppelklicken (oder PC neu starten).
+
+## Quellen und Tags
+
+Beides liegt als CSV-Datei im Ordner `bot` (Trennzeichen `;`, eine Zeile pro Eintrag):
+
+```
+quellen.csv                         tags.csv
+Wochentag;URL                       Tag;Schlagwort
+Montag;https://derstandard.at       Cyberkriminalität;cyber*
+Montag;https://orf.at/rss           Cyberkriminalität;ransomware
+Dienstag;https://derstandard.at     Österreich;wien*
+```
+
+**Über die Webseite** (auch unterwegs): Im Reiter „Quellen“ eine oder mehrere Adressen eingeben
+(eine pro Zeile), Tage anklicken, „Quellen hinzufügen“. Die Seite schickt das an den Bot, der trägt es
+in `quellen.csv` ein und meldet „Erledigt: …“ zurück. Läuft der Bot gerade nicht, wartet der Befehl,
+bis er wieder da ist (startet Render in der Zwischenzeit neu, geht ein wartender Befehl verloren –
+dann einfach nochmal senden). Tags genauso im Reiter „Tags“.
+
+**Von Hand:** Datei mit Excel oder dem Editor öffnen, bearbeiten, speichern. Der Bot liest beide
+Dateien bei jeder Prüfung neu – kein Neustart nötig. Excel vor dem nächsten Befehl von der Webseite
+wieder schließen, sonst kann der Bot die Datei nicht ändern (er meldet das dann auf der Seite).
+
+**Was erlaubt ist** – das prüfen Webseite, Server **und** Bot jeweils selbst:
+
+- Adressen: nur `http://` oder `https://` zu öffentlichen Servern im Internet. Gesperrt sind
+  Adressen ins eigene Netz (localhost, 127.x, 192.168.x, 10.x, Router-Namen wie `fritz.box.lan` …),
+  Zugangsdaten in der Adresse (`user:pass@`) und andere Arten wie `file:` oder `javascript:`.
+  Der Bot prüft vor jedem Abruf und nach jeder Weiterleitung zusätzlich, wohin die Adresse wirklich
+  zeigt.
+- Tags (bis 40 Zeichen) und Schlagwörter (bis 60 Zeichen): Buchstaben, Ziffern, Leerzeichen und
+  `- . & / ' +`, am Anfang immer ein Buchstabe oder eine Ziffer, bei Schlagwörtern `*` am Ende.
+  Dadurch kann keine Zelle mit `=`, `+`, `-` oder `@` beginnen – Excel würde sie sonst beim Öffnen
+  als Formel ausführen.
+- Höchstens 50 Einträge pro Befehl, 700 Quellen, 100 Tags mit je 100 Schlagwörtern.
+
+Ungültige Zeilen, die du von Hand einträgst, überspringt der Bot und zeigt sie im Reiter „Fehler“ –
+gelöscht werden sie nicht. Die Webseite kann nur diese festen Befehle schicken; Programme starten,
+andere Dateien anfassen oder Einstellungen in `config.toml` ändern kann sie nicht.
+
+**Umstieg von der alten Version:** Tags aus `config.toml` übernimmt der Bot beim ersten Start
+automatisch in `tags.csv`. Eine alte `quellen.xlsx` wird nicht mehr gelesen – ihre Quellen einmal
+über die Webseite eintragen und die Excel-Datei danach löschen.
 
 ## Gut zu wissen
 
@@ -152,8 +200,10 @@ Autostart-Ordner doppelklicken (oder PC neu starten).
 |---|---|
 | `bot/news_bot.py` | der Bot |
 | `bot/webpush.py` | verschickt die Browser-Benachrichtigungen |
-| `bot/config.toml` | alle Einstellungen und Tag-Schlagwörter |
-| `bot/quellen.xlsx` | deine Quellen nach Wochentag |
+| `bot/listen.py` | liest, prüft und ändert `quellen.csv` und `tags.csv` |
+| `bot/config.toml` | alle Einstellungen |
+| `bot/quellen.csv` | deine Quellen nach Wochentag (entsteht automatisch) |
+| `bot/tags.csv` | deine Tags und Schlagwörter (entsteht automatisch) |
 | `bot/state.json` | gemeldete Artikel, Verlauf, Geräte, Pause/Intervall (entsteht automatisch) |
 | `bot/vapid_privat.pem` | Schlüssel für Benachrichtigungen (entsteht automatisch, geheim) |
 | `bot/newsbot.log` | Protokoll |

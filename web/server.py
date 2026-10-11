@@ -18,7 +18,9 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import hmac
+import ipaddress
 import os
+import re
 import time
 import uuid
 from collections import OrderedDict, deque
@@ -29,7 +31,7 @@ from urllib.parse import parse_qs, urlparse
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
-from pydantic import BaseModel, Field, model_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 PASSWORT = os.environ.get("DASHBOARD_PASSWORT", "")
@@ -46,6 +48,74 @@ SERVER_START = time.time()
 ERLAUBTE_PUSH_HOSTS = (".googleapis.com", ".mozilla.com", ".mozaws.net", ".push.apple.com", ".notify.windows.com")
 
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+
+
+# --------------------------------------------------------------------------- Prüfregeln für Quellen und Tags
+# Dieselben Regeln wie in bot/listen.py. Der Bot prüft alles noch einmal selbst –
+# hier geht es darum, Unsinn gar nicht erst anzunehmen und klare Fehlermeldungen zu geben.
+
+Wochentag = Literal["montag", "dienstag", "mittwoch", "donnerstag", "freitag", "samstag", "sonntag"]
+TAG_MUSTER = re.compile(r"[^\W_][\w .&/'+-]{0,39}")
+WORT_MUSTER = re.compile(r"[^\W_][\w .&/'+-]{0,58}\*?")
+DOMAIN_MUSTER = re.compile(r"[\w-]+(\.[\w-]+)+")
+INTERNE_NAMEN = ("localhost", ".localhost", ".local", ".lan", ".home", ".internal", ".intranet", ".corp", ".arpa")
+VERBOTENE_ZEICHEN = set('\\"<>`{}|^')
+MAX_PRO_BEFEHL = 50
+
+
+def _oeffentlich(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    if ip.version == 6 and ip.ipv4_mapped:
+        ip = ip.ipv4_mapped
+    return ip.is_global and not ip.is_multicast
+
+
+def _url_pruefen(wert: str) -> str:
+    url = wert.strip()
+    fehler = ValueError(f"Adresse nicht erlaubt: {url[:80]}")
+    if not url or len(url) > 500 or any(c.isspace() or not c.isprintable() or c in VERBOTENE_ZEICHEN for c in url):
+        raise fehler
+    if "://" not in url:
+        url = "https://" + url
+    try:
+        teile = urlparse(url)
+        host = teile.hostname or ""
+        teile.port
+    except ValueError:
+        raise fehler from None
+    if teile.scheme not in ("http", "https") or not host or "@" in teile.netloc:
+        raise fehler
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        ip = None  # keine IP-Adresse, sondern ein Name
+    if ip is not None:
+        if not _oeffentlich(ip):
+            raise fehler
+        return url
+    if re.fullmatch(r"[\d.]+", host) or not DOMAIN_MUSTER.fullmatch(host) \
+            or host == "localhost" or host.endswith(INTERNE_NAMEN):
+        raise fehler
+    return url
+
+
+def _tag_pruefen(wert: str) -> str:
+    name = " ".join(wert.split())
+    if not TAG_MUSTER.fullmatch(name):
+        raise ValueError(f"Tag-Name nicht erlaubt: {name[:40]} (nur Buchstaben, Ziffern, Leerzeichen und - . & / ' +)")
+    return name
+
+
+def _wort_pruefen(wert: str) -> str:
+    wort = " ".join(wert.split())
+    if not WORT_MUSTER.fullmatch(wort):
+        raise ValueError(f"Schlagwort nicht erlaubt: {wort[:60]} (nur Buchstaben, Ziffern, Leerzeichen, "
+                         "- . & / ' + und * am Ende)")
+    return wort
+
+
+QuellUrl = Annotated[str, Field(max_length=600), AfterValidator(_url_pruefen)]
+TagName = Annotated[str, Field(max_length=80), AfterValidator(_tag_pruefen)]
+Schlagwort = Annotated[str, Field(max_length=100), AfterValidator(_wort_pruefen)]
 
 
 # --------------------------------------------------------------------------- Datenmodelle
@@ -106,15 +176,35 @@ class ErledigtIn(BaseModel):
     ergebnis: Kurz
 
 
+class QuelleIn(BaseModel):
+    wochentag: Wochentag
+    url: str = Field(max_length=600)
+
+
+class TagIn(BaseModel):
+    name: str = Field(max_length=80)
+    woerter: list[Annotated[str, Field(max_length=100)]] = Field(max_length=100)
+
+
+class ListenIn(BaseModel):
+    """Quellen und Tags, wie sie gerade in den CSV-Dateien auf dem PC stehen (nur zur Anzeige)."""
+    quellen: list[QuelleIn] = Field(max_length=700)
+    tags: list[TagIn] = Field(max_length=100)
+
+
 class SyncIn(BaseModel):
     status: StatusIn
     artikel: list[ArtikelIn] = Field(default_factory=list, max_length=600)
     fehler: list[FehlerIn] = Field(default_factory=list, max_length=300)
     erledigt: list[ErledigtIn] = Field(default_factory=list, max_length=100)
     snapshot: bool = False
+    listen: Optional[ListenIn] = None  # nur, wenn sich etwas geändert hat
 
 
-Aktion = Literal["jetzt_pruefen", "pausieren", "fortsetzen", "intervall", "testnachricht"]
+Aktion = Literal["jetzt_pruefen", "pausieren", "fortsetzen", "intervall", "testnachricht",
+                 "quellen_hinzufuegen", "quellen_entfernen", "tag_hinzufuegen", "tag_entfernen"]
+QUELLEN_AKTIONEN = {"quellen_hinzufuegen", "quellen_entfernen"}
+TAG_AKTIONEN = {"tag_hinzufuegen", "tag_entfernen"}
 
 
 B64 = Annotated[str, Field(min_length=10, max_length=200, pattern=r"^[A-Za-z0-9_-]+=*$")]
@@ -142,13 +232,25 @@ class PushIn(BaseModel):
 
 
 class BefehlIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     aktion: Aktion
     wert: Optional[int] = Field(None, ge=5, le=240)
+    tage: list[Wochentag] = Field(default_factory=list, max_length=7)
+    urls: list[QuellUrl] = Field(default_factory=list, max_length=MAX_PRO_BEFEHL)
+    tag: Optional[TagName] = None
+    woerter: list[Schlagwort] = Field(default_factory=list, max_length=MAX_PRO_BEFEHL)
 
     @model_validator(mode="after")
-    def intervall_braucht_wert(self) -> "BefehlIn":
+    def passt_zur_aktion(self) -> "BefehlIn":
         if self.aktion == "intervall" and self.wert is None:
             raise ValueError("Für 'intervall' bitte eine Minutenzahl (5–240) angeben.")
+        if self.aktion in QUELLEN_AKTIONEN and (not self.tage or not self.urls):
+            raise ValueError("Bitte mindestens eine Adresse und einen Wochentag angeben.")
+        if self.aktion in TAG_AKTIONEN and not self.tag:
+            raise ValueError("Bitte einen Tag-Namen angeben.")
+        if self.aktion == "tag_hinzufuegen" and not self.woerter:
+            raise ValueError("Bitte mindestens ein Schlagwort angeben.")
         return self
 
 
@@ -170,6 +272,7 @@ class Speicher:
         self.beendet: dict | None = None   # Bot hat sich abgemeldet (beendet oder abgestürzt)
         self.hat_snapshot = False
         self.push_aenderungen: list[dict] = []
+        self.listen: dict | None = None  # Quellen und Tags vom Bot
 
     def artikel_hinzufuegen(self, liste: list[ArtikelIn]) -> None:
         for a in liste:
@@ -189,6 +292,8 @@ class Speicher:
                 self.hat_snapshot = True
             self.artikel_hinzufuegen(daten.artikel)
             self.fehler.extend(f.model_dump() for f in daten.fehler)
+            if daten.listen is not None:
+                self.listen = daten.listen.model_dump()
 
             erledigt = {e.id: e.ergebnis for e in daten.erledigt}
             abzuholen = []
@@ -197,7 +302,7 @@ class Speicher:
                     b["zustand"], b["ergebnis"] = "erledigt", erledigt[b["id"]]
                 elif b["zustand"] == "offen":
                     b["zustand"] = "abgeholt"
-                    abzuholen.append({"id": b["id"], "aktion": b["aktion"], "wert": b["wert"]})
+                    abzuholen.append({k: b[k] for k in ("id", "aktion", "wert", "tage", "urls", "tag", "woerter")})
             push, self.push_aenderungen = self.push_aenderungen, []
             return {"befehle": abzuholen, "snapshot_noetig": not self.hat_snapshot, "push_aenderungen": push}
 
@@ -220,15 +325,16 @@ class Speicher:
 
     def befehl(self, b: BefehlIn) -> dict:
         with self.lock:
-            # Gleiche offene Aktion nicht doppelt einreihen – nur den Wert aktualisieren.
-            for alt in self.befehle:
-                if alt["zustand"] == "offen" and alt["aktion"] == b.aktion:
-                    alt["wert"] = b.wert
-                    return alt
+            # Gleiche offene Steuer-Aktion nicht doppelt einreihen – nur den Wert aktualisieren.
+            # (Quellen- und Tag-Befehle haben jeweils eigenen Inhalt und bleiben alle erhalten.)
+            if b.aktion not in QUELLEN_AKTIONEN | TAG_AKTIONEN:
+                for alt in self.befehle:
+                    if alt["zustand"] == "offen" and alt["aktion"] == b.aktion:
+                        alt["wert"] = b.wert
+                        return alt
             neu = {
                 "id": uuid.uuid4().hex[:12],
-                "aktion": b.aktion,
-                "wert": b.wert,
+                **b.model_dump(),
                 "zustand": "offen",
                 "ergebnis": "",
                 "erstellt": time.time(),
@@ -254,6 +360,7 @@ class Speicher:
                 "artikel": list(reversed(self.artikel.values())),
                 "fehler": list(reversed(self.fehler)),
                 "befehle": list(reversed(self.befehle)),
+                "listen": self.listen,
                 "server_laeuft_seit_sekunden": round(time.time() - SERVER_START),
             }
 
@@ -386,16 +493,25 @@ def daten(request: Request):
     return speicher.ansicht()
 
 
+def lesbarer_fehler(e: ValueError) -> str:
+    if isinstance(e, ValidationError):
+        meldungen = [f.get("msg", "").removeprefix("Value error, ") for f in e.errors()]
+        return "; ".join(dict.fromkeys(meldungen))[:500]
+    return "Ungültige Anfrage."
+
+
 @app.post("/api/befehl")
 async def befehl(request: Request):
     nur_eingeloggt(request)
     # Nur JSON annehmen: fremde Webseiten können ohne CORS-Freigabe kein JSON schicken.
     if not request.headers.get("content-type", "").startswith("application/json"):
         raise HTTPException(415, "Nur JSON erlaubt.")
+    if int(request.headers.get("content-length") or 0) > 100_000:
+        raise HTTPException(413, "Zu groß.")
     try:
         b = BefehlIn.model_validate(await request.json())
     except ValueError as e:
-        return JSONResponse({"detail": str(e)}, status_code=422)
+        return JSONResponse({"detail": lesbarer_fehler(e)}, status_code=422)
     return speicher.befehl(b)
 
 

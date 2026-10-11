@@ -6,6 +6,8 @@ bot/*.tmp
 bot/*.log*
 bot/*.lock
 bot/vapid_privat.pem
+bot/quellen.csv
+bot/tags.csv
 bot/quellen.xlsx
 .venv/
 __pycache__/

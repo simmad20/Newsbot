@@ -84,6 +84,12 @@
       <button type="button" role="tab" id="reiter-artikel" aria-controls="bereich-artikel" aria-selected="true">
         Artikel <span id="zahl-artikel" class="zahl"></span>
       </button>
+      <button type="button" role="tab" id="reiter-quellen" aria-controls="bereich-quellen" aria-selected="false" tabindex="-1">
+        Quellen <span id="zahl-quellen" class="zahl"></span>
+      </button>
+      <button type="button" role="tab" id="reiter-tags" aria-controls="bereich-tags" aria-selected="false" tabindex="-1">
+        Tags <span id="zahl-tags" class="zahl"></span>
+      </button>
       <button type="button" role="tab" id="reiter-fehler" aria-controls="bereich-fehler" aria-selected="false" tabindex="-1">
         Fehler <span id="zahl-fehler" class="zahl"></span>
       </button>
@@ -103,6 +109,48 @@
       <p id="anzahl" class="anzahl leise"></p>
       <ol id="ticker" class="ticker"></ol>
       <button type="button" id="mehr" class="knopf mehr" hidden>Weitere anzeigen</button>
+    </section>
+
+    <section id="bereich-quellen" role="tabpanel" aria-labelledby="reiter-quellen" hidden>
+      <p class="bereich-hinweis leise">Der Bot prüft an jedem Wochentag die dort eingetragenen Quellen. Sie stehen in <code>quellen.csv</code> auf deinem PC – Änderungen hier schickt die Seite an den Bot, und der trägt sie dort ein.</p>
+      <form id="quellen-form" class="formular" novalidate>
+        <div class="feld">
+          <label for="quellen-urls">Neue Quellen</label>
+          <textarea id="quellen-urls" rows="3" spellcheck="false" autocapitalize="off" autocomplete="off" placeholder="derstandard.at&#10;https://www.heise.de/rss/heise.rdf"></textarea>
+          <p class="feld-hilfe">Eine Adresse pro Zeile, höchstens 50. Startseite, Ressortseite oder direkt die Feed-Adresse.</p>
+        </div>
+        <fieldset class="feld">
+          <legend>An welchen Tagen?</legend>
+          <div id="tage-wahl" class="tage-wahl"></div>
+          <div class="schnellwahl">
+            <button type="button" class="link-knopf" data-tage="werktage">Mo–Fr</button>
+            <button type="button" class="link-knopf" data-tage="alle">Alle</button>
+            <button type="button" class="link-knopf" data-tage="keine">Keine</button>
+          </div>
+        </fieldset>
+        <button type="submit" class="knopf haupt">Quellen hinzufügen</button>
+        <p id="quellen-rueck" class="rueckmeldung" role="status" aria-live="polite"></p>
+      </form>
+      <div id="quellen-liste" class="listen-bereich"></div>
+    </section>
+
+    <section id="bereich-tags" role="tabpanel" aria-labelledby="reiter-tags" hidden>
+      <p class="bereich-hinweis leise">Tags markieren Artikel, deren Titel oder Vorschau ein Schlagwort enthält. Sie stehen in <code>tags.csv</code> auf deinem PC und gelten ab der nächsten Prüfung.</p>
+      <form id="tags-form" class="formular" novalidate>
+        <div class="feld">
+          <label for="tag-name">Tag</label>
+          <input id="tag-name" type="text" maxlength="40" list="tag-namen" autocomplete="off" placeholder="z. B. Cybersecurity oder ein bestehender Tag">
+          <datalist id="tag-namen"></datalist>
+        </div>
+        <div class="feld">
+          <label for="tag-woerter">Schlagwörter</label>
+          <textarea id="tag-woerter" rows="2" spellcheck="false" autocapitalize="off" autocomplete="off" placeholder="ransomware, cyber*, phishing"></textarea>
+          <p class="feld-hilfe">Mit Komma oder Zeilenumbruch trennen. <strong>cyber*</strong> findet auch „Cyberangriff“, ohne * zählt nur das ganze Wort. Groß-/Kleinschreibung egal.</p>
+        </div>
+        <button type="submit" class="knopf haupt">Zum Tag hinzufügen</button>
+        <p id="tags-rueck" class="rueckmeldung" role="status" aria-live="polite"></p>
+      </form>
+      <div id="tags-liste" class="listen-bereich"></div>
     </section>
 
     <section id="bereich-fehler" role="tabpanel" aria-labelledby="reiter-fehler" hidden>
