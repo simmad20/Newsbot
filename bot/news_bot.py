@@ -36,8 +36,10 @@ from zoneinfo import ZoneInfo
 
 import feedparser
 import requests
+import urllib3
 
 import listen
+import seiten
 import webpush
 
 BASIS = Path(__file__).resolve().parent
@@ -61,6 +63,14 @@ FEHLER_VERLAUF_MAX = 100
 FEED_PFADE = ["/rss", "/feed", "/rss.xml", "/feed.xml", "/atom.xml", "/index.xml"]
 TRACKING = re.compile(r"^(utm_\w*|fbclid|gclid|dclid|mc_cid|mc_eid|ref|ref_src|ito|xtor|wt_mc|ns_\w+)$", re.I)
 MAX_WEITERLEITUNGEN = 5
+MAX_SEITE_BYTES = 5_000_000      # Feeds und Webseiten
+MAX_SITEMAP_BYTES = 15_000_000   # Sitemaps können groß sein
+MAX_ROBOTS_BYTES = 500_000
+MAX_DOWNLOAD_SEKUNDEN = 60       # Gesamtzeit pro Abruf – ein Server, der Byte für Byte tröpfelt, hält den Bot nicht fest
+MAX_SEITENABRUFE = 20            # Artikelseiten pro Quelle und Prüfung (Sitemap/Startseite)
+MAX_ERSTABRUFE_STARTSEITE = 10   # beim ersten Mal nur die obersten Links der Startseite ansehen
+WEG_NEU_SUCHEN_STUNDEN = 24      # ohne Feed: einmal am Tag schauen, ob es inzwischen einen gibt
+WEGE = {"feed": "RSS-Feed", "news_sitemap": "News-Sitemap", "sitemap": "Sitemap", "startseite": "Startseite"}
 ERLAUBTE_AKTIONEN = {"jetzt_pruefen", "pausieren", "fortsetzen", "intervall", "max_alter", "testnachricht",
                      "quellen_hinzufuegen", "quellen_entfernen", "tag_hinzufuegen", "tag_entfernen",
                      "quellen_importieren", "tags_importieren"}
@@ -122,7 +132,7 @@ def lade_state() -> dict:
         "verlauf": [], "fehler_verlauf": [], "sync_artikel": [], "sync_fehler": [], "sync_erledigt": [],
         "pausiert": False, "intervall_minuten": None, "max_alter_stunden": None, "config_stand": {}, "sofort": False,
         "letzter_lauf": None, "naechster_lauf": None, "letztes_ergebnis": "",
-        "wochentag": "", "quellen_heute": 0, "push_abos": [],
+        "wochentag": "", "quellen_heute": 0, "push_abos": [], "bekannt": {},
     }
     if not STATE_DATEI.exists():
         return leer
@@ -251,12 +261,29 @@ def pruefe_ziel(url: str) -> None:
             raise AbrufFehler(f"{url}: zeigt auf ein privates Netz – aus Sicherheitsgründen gesperrt")
 
 
-def sicher_abrufen(url: str) -> requests.Response:
-    """Wie session.get, folgt Weiterleitungen aber selbst und prüft jedes Ziel."""
+def sicher_abrufen(url: str, max_bytes: int = MAX_SEITE_BYTES) -> requests.Response:
+    """Wie session.get, folgt Weiterleitungen aber selbst, prüft jedes Ziel und liest höchstens
+    max_bytes (auch entpackt) – eine riesige oder endlose Antwort kann den PC nicht volllaufen lassen."""
     for _ in range(MAX_WEITERLEITUNGEN + 1):
         pruefe_ziel(url)
-        r = session.get(url, timeout=TIMEOUT, allow_redirects=False)
+        r = session.get(url, timeout=TIMEOUT, allow_redirects=False, stream=True)
         if not r.is_redirect:
+            teile, groesse, start = [], 0, time.monotonic()
+            try:
+                # read1 kommt sofort mit dem zurück, was schon angekommen ist – so greift die Zeitgrenze
+                # auch bei einem Server, der Byte für Byte tröpfelt. Entpackt wird dabei gleich mitgezählt.
+                while stueck := r.raw.read1(65536, decode_content=True):
+                    groesse += len(stueck)
+                    if groesse > max_bytes:
+                        raise AbrufFehler(f"{url}: Antwort zu groß (über {max_bytes // 1_000_000} MB)")
+                    if time.monotonic() - start > MAX_DOWNLOAD_SEKUNDEN:
+                        raise AbrufFehler(f"{url}: Antwort kommt zu langsam (über {MAX_DOWNLOAD_SEKUNDEN} s)")
+                    teile.append(stueck)
+            except (urllib3.exceptions.HTTPError, OSError) as e:
+                raise AbrufFehler(f"{url}: Verbindung abgebrochen ({type(e).__name__})") from e
+            finally:
+                r.close()
+            r._content, r._content_consumed = b"".join(teile), True
             return r
         r.close()
         url = urljoin(url, r.headers["location"])
@@ -271,7 +298,7 @@ def erlaubt(url: str) -> bool:
     if rp is None:
         rp = RobotFileParser()
         try:
-            r = sicher_abrufen(basis + "/robots.txt")
+            r = sicher_abrufen(basis + "/robots.txt", MAX_ROBOTS_BYTES)
             rp.parse(r.text.splitlines() if r.status_code == 200 else [])
         except (requests.RequestException, AbrufFehler):
             rp.parse([])
@@ -279,12 +306,12 @@ def erlaubt(url: str) -> bool:
     return rp.can_fetch(USER_AGENT, url)
 
 
-def hole(url: str) -> requests.Response:
+def hole(url: str, max_bytes: int = MAX_SEITE_BYTES) -> requests.Response:
     if not erlaubt(url):
         raise AbrufFehler(f"robots.txt verbietet den Abruf von {url}")
     time.sleep(PAUSE_ZWISCHEN_ABRUFEN)
     try:
-        r = sicher_abrufen(url)
+        r = sicher_abrufen(url, max_bytes)
     except requests.RequestException as e:
         raise AbrufFehler(f"{url}: {type(e).__name__}") from e
     if r.status_code != 200:
@@ -299,9 +326,9 @@ def ist_feed(inhalt: bytes) -> bool:
     return bool(d.version) and bool(d.entries)
 
 
-def finde_feed(url: str) -> str:
-    """Ist die URL selbst ein Feed? Sonst <link rel=alternate> auf der Seite, sonst übliche Pfade."""
-    r = hole(url)
+def feed_in_seite(r: requests.Response) -> str | None:
+    """Ist die Adresse selbst ein Feed? Sonst <link rel=alternate> auf der Seite, sonst übliche Pfade."""
+    url = r.url
     if ist_feed(r.content):
         return url
     for tag in re.findall(r"<link\b[^>]*>", r.text, re.I):
@@ -318,7 +345,197 @@ def finde_feed(url: str) -> str:
                 return kandidat
         except AbrufFehler:
             continue
-    raise AbrufFehler(f"Kein RSS/Atom-Feed gefunden für {url} – trage die Feed-URL direkt als Quelle ein.")
+    return None
+
+
+# --------------------------------------------------------------------------- Ohne Feed: Sitemap, Startseite
+# Reihenfolge: Feed → News-Sitemap → normale Sitemap → Startseite (Notlösung).
+# Auswerten tut seiten.py; abgerufen wird nur über hole() mit allen Schutzregeln.
+
+def sitemap_kandidaten(seiten_url: str) -> list[str]:
+    teile = urlparse(seiten_url)
+    basis = f"{teile.scheme}://{teile.netloc}"
+    erlaubt(seiten_url)  # lädt die robots.txt, falls noch nicht geschehen
+    rp = _robots.get(basis)
+    aus_robots = list(rp.site_maps() or []) if rp else []
+    ergebnis: list[str] = []
+    for kandidat in aus_robots + [basis + p for p in seiten.SITEMAP_PFADE]:
+        url = listen.pruefe_url(kandidat)
+        if url and seiten.gleiche_seite(url, teile.hostname) and url not in ergebnis:
+            ergebnis.append(url)
+    ergebnis.sort(key=lambda u: "news" not in u.lower())  # News-Sitemaps zuerst
+    return ergebnis[:8]
+
+
+def lies_sitemap_url(url: str, host: str, tiefe: int = 0) -> tuple[list[dict], bool]:
+    """(Einträge derselben Seite, ist News-Sitemap). Verzeichnisse: höchstens 2 Unter-Sitemaps."""
+    try:
+        sitemap = seiten.lies_sitemap(hole(url, MAX_SITEMAP_BYTES).content)
+    except seiten.SeitenFehler as e:
+        raise AbrufFehler(f"{url}: {e}") from e
+    if sitemap["index"]:
+        if tiefe:
+            return [], False
+        kinder = [(u, d) for u, d in sitemap["index"] if listen.pruefe_url(u) and seiten.gleiche_seite(u, host)]
+        if any(d for _, d in kinder):
+            kinder.sort(key=lambda k: ("news" not in k[0].lower(), -(k[1].timestamp() if k[1] else 0)))
+        else:
+            kinder = sorted(kinder[::-1], key=lambda k: "news" not in k[0].lower())  # ohne Datum: die letzten sind meist die neuesten
+        # Seit über 30 Tagen unveränderte Teil-Sitemaps enthalten keine neuen Artikel – nicht abrufen
+        frisch = [k for k in kinder if not k[1] or jetzt_utc() - k[1] < timedelta(days=30)] or kinder[:1]
+        alle, news = [], False
+        for kind, _ in frisch[:2]:
+            try:
+                eintraege, ist_news = lies_sitemap_url(kind, host, 1)
+            except AbrufFehler:
+                continue
+            alle += eintraege
+            news = news or ist_news
+            if news:
+                break  # News-Sitemap gefunden – das reicht
+        return alle, news
+    eintraege = [e for e in sitemap["eintraege"] if seiten.gleiche_seite(e["url"], host)]
+    return eintraege, any(e["news"] for e in eintraege)
+
+
+def finde_weg(quelle: str) -> dict:
+    """Wie kommt der Bot an die neuen Artikel dieser Quelle?"""
+    r = hole(quelle)
+    jetzt = jetzt_utc().isoformat()
+    feed = feed_in_seite(r)
+    if feed:
+        return {"art": "feed", "url": feed, "gesucht": jetzt}
+    host = urlparse(r.url).hostname or ""
+    normale = None
+    for kandidat in sitemap_kandidaten(r.url):
+        try:
+            eintraege, news = lies_sitemap_url(kandidat, host)
+        except AbrufFehler:
+            continue
+        if news:
+            return {"art": "news_sitemap", "url": kandidat, "gesucht": jetzt}
+        mit_datum = sum(1 for e in eintraege if e["datum"])
+        if normale is None and mit_datum and mit_datum * 2 >= len(eintraege):
+            normale = kandidat
+    if normale:
+        return {"art": "sitemap", "url": normale, "gesucht": jetzt}
+    return {"art": "startseite", "url": r.url, "gesucht": jetzt}
+
+
+def seitenartikel(norm: str, eintrag: dict, info: dict | None, weg: dict, jetzt: datetime,
+                  grenze: timedelta, ohne_datum_ok: bool) -> dict | None:
+    """Aus Sitemap-Eintrag und Angaben der Artikelseite einen Artikel wie aus einem Feed machen."""
+    info = info or {}
+    titel = info.get("titel") or eintrag.get("titel")
+    if not titel or (weg["art"] == "startseite" and not info.get("ist_artikel")):
+        return None  # Startseite: nur Seiten, die sich selbst als Artikel ausweisen
+    datum = info.get("datum") or eintrag.get("datum")
+    if datum is None and not ohne_datum_ok:
+        return None
+    if datum is not None and (jetzt - datum > grenze or datum > jetzt + timedelta(days=1)):
+        return None
+    schluessel = [norm]
+    canonical = listen.pruefe_url(info.get("canonical", ""))
+    if canonical and seiten.gleiche_seite(canonical, urlparse(norm).hostname):
+        schluessel.append(normalisiere_url(canonical))
+    return {
+        "schluessel": list(dict.fromkeys(schluessel)),
+        "url": norm,
+        "titel": titel,
+        "teaser": info.get("teaser", ""),
+        "autor": info.get("autor", ""),
+        "medium": info.get("medium") or (urlparse(norm).hostname or "").removeprefix("www."),
+        "datum": datum,
+        # Datum der Artikelseite > News-Sitemap (Veröffentlichung) > normale Sitemap (nur Änderungsdatum)
+        "datum_art": "unbekannt" if datum is None else info.get("datum_art") if info.get("datum")
+        else "veröffentlicht" if eintrag.get("news") else "aktualisiert",
+        "weg": weg["art"],
+    }
+
+
+def artikel_von_seiten(kandidaten: list[tuple[str, dict]], state: dict, weg: dict, jetzt: datetime,
+                       grenze: timedelta, ohne_datum_ok: bool) -> list[dict]:
+    """Holt die Angaben neuer Artikelseiten (höchstens MAX_SEITENABRUFE). Was nicht gemeldet wird,
+    kommt in "bekannt", damit der Bot die Seite nicht bei jeder Prüfung erneut abruft."""
+    neue, abrufe = [], 0
+    for norm, eintrag in kandidaten:
+        if norm in state["gesehen"]:
+            continue
+        if norm in state["bekannt"]:
+            state["bekannt"][norm] = jetzt.isoformat()  # noch verlinkt → nicht vergessen
+            continue
+        if abrufe >= MAX_SEITENABRUFE:
+            break  # Rest beim nächsten Lauf
+        abrufe += 1
+        info = None
+        try:
+            r = hole(eintrag["url"])
+            if "html" in r.headers.get("content-type", "").lower():
+                info = seiten.lies_artikelseite(r.text, r.url)
+        except AbrufFehler as e:
+            log.info("Artikelseite übersprungen: %s", e)
+        except Exception:  # fremde Seite mit unerwartetem Inhalt – nur diese Seite überspringen
+            log.exception("Artikelseite %s nicht auswertbar – übersprungen", eintrag["url"])
+        try:
+            artikel = seitenartikel(norm, eintrag, info, weg, jetzt, grenze, ohne_datum_ok)
+        except Exception:
+            log.exception("Artikel %s nicht auswertbar – übersprungen", eintrag["url"])
+            artikel = None
+        if artikel:
+            neue.append(artikel)
+        else:
+            state["bekannt"][norm] = jetzt.isoformat()
+    return neue
+
+
+def lies_quelle(weg: dict, state: dict, jetzt: datetime, grenze: timedelta) -> list[dict]:
+    if weg["art"] == "feed":
+        return [{**a, "weg": "feed"} for a in lese_artikel(hole(weg["url"]).content, weg["url"], jetzt, grenze)]
+    host = urlparse(weg["url"]).hostname or ""
+    if weg["art"] in ("news_sitemap", "sitemap"):
+        eintraege, _ = lies_sitemap_url(weg["url"], host)
+        kandidaten = []
+        for e in eintraege:
+            url = listen.pruefe_url(e["url"])
+            if url and e["datum"] and timedelta(days=-1) <= jetzt - e["datum"] <= grenze:
+                kandidaten.append((normalisiere_url(url), {**e, "url": url}))
+        kandidaten.sort(key=lambda k: k[1]["datum"], reverse=True)  # neueste zuerst
+        return artikel_von_seiten(list(dict(kandidaten).items()), state, weg, jetzt, grenze, ohne_datum_ok=False)
+
+    # Startseite: neue Links erkennen. Beim allerersten Mal nur die obersten ansehen, den Rest nur merken –
+    # sonst kämen auf einen Schlag alle Artikel der Startseite als „neu“.
+    r = hole(weg["url"])
+    links: dict[str, dict] = {}
+    for url, text in seiten.artikel_links(r.text, r.url):
+        sauber = listen.pruefe_url(url)
+        if sauber:
+            links.setdefault(normalisiere_url(sauber), {"url": sauber, "datum": None, "titel": text})
+    if not links:
+        raise AbrufFehler(f"{weg['url']}: weder Feed noch Sitemap, und auf der Seite sind keine Artikel-Links erkennbar")
+    marke = f"basis|{weg['url']}"
+    erstes_mal = marke not in state["bekannt"]
+    state["bekannt"][marke] = jetzt.isoformat()
+    kandidaten = list(links.items())
+    if erstes_mal:
+        for norm, _ in kandidaten[MAX_ERSTABRUFE_STARTSEITE:]:
+            state["bekannt"].setdefault(norm, jetzt.isoformat())
+        kandidaten = kandidaten[:MAX_ERSTABRUFE_STARTSEITE]
+    return artikel_von_seiten(kandidaten, state, weg, jetzt, grenze, ohne_datum_ok=not erstes_mal)
+
+
+def weg_fuer(quelle: str, state: dict) -> dict:
+    weg = state["feeds"].get(quelle)
+    if isinstance(weg, str):  # Stand aus älteren Versionen: nur Feed-Adresse
+        weg = {"art": "feed", "url": weg, "gesucht": jetzt_utc().isoformat()}
+    veraltet = weg and weg["art"] != "feed" and (
+        jetzt_utc() - datetime.fromisoformat(weg.get("gesucht") or "2000-01-01T00:00:00+00:00")
+        > timedelta(hours=WEG_NEU_SUCHEN_STUNDEN))
+    if not weg or veraltet:
+        neu = finde_weg(quelle)
+        if not weg or neu["art"] != weg["art"]:
+            log.info("%s: %s wird verwendet (%s).", quelle, WEGE[neu["art"]], neu["url"])
+        weg = neu
+    return weg
 
 
 def normalisiere_url(url: str) -> str:
@@ -342,11 +559,14 @@ def lese_artikel(feed_inhalt: bytes, feed_url: str, jetzt: datetime, grenze: tim
         link = e.get("link")
         if not link:
             continue
-        if e.get("published_parsed"):
-            datum, datum_art = datetime(*e.published_parsed[:6], tzinfo=timezone.utc), "veröffentlicht"
-        elif e.get("updated_parsed"):
-            datum, datum_art = datetime(*e.updated_parsed[:6], tzinfo=timezone.utc), "aktualisiert"
-        else:
+        try:
+            if e.get("published_parsed"):
+                datum, datum_art = datetime(*e.published_parsed[:6], tzinfo=timezone.utc), "veröffentlicht"
+            elif e.get("updated_parsed"):
+                datum, datum_art = datetime(*e.updated_parsed[:6], tzinfo=timezone.utc), "aktualisiert"
+            else:
+                datum, datum_art = None, "unbekannt"
+        except (TypeError, ValueError, OverflowError):
             datum, datum_art = None, "unbekannt"
         if datum and jetzt - datum > grenze:
             continue
@@ -545,7 +765,7 @@ def merke_fuer_dashboard(state: dict, a: dict, gemeldet: bool) -> None:
     eintrag = {
         "url": a["url"], "titel": a["titel"], "medium": a["medium"], "teaser": a["teaser"],
         "autor": a["autor"], "datum": a["datum"].isoformat() if a["datum"] else None,
-        "datum_art": a["datum_art"], "tags": a["tags"], "gemeldet": gemeldet,
+        "datum_art": a["datum_art"], "tags": a["tags"], "gemeldet": gemeldet, "weg": a.get("weg", "feed"),
         "gefunden_um": jetzt_utc().isoformat(),
     }
     state["verlauf"] = (state["verlauf"] + [eintrag])[-VERLAUF_MAX:]
@@ -574,6 +794,7 @@ def durchlauf(cfg: dict, state: dict, test: bool = False) -> str:
 
     grenze = (jetzt - timedelta(days=GESEHEN_BEHALTEN_TAGE)).isoformat()
     state["gesehen"] = {k: v for k, v in state["gesehen"].items() if v >= grenze}
+    state["bekannt"] = {k: v for k, v in state["bekannt"].items() if v >= grenze}
 
     neue: list[dict] = []
     schon_im_lauf: set[str] = set()
@@ -581,12 +802,19 @@ def durchlauf(cfg: dict, state: dict, test: bool = False) -> str:
     for nr, quelle in enumerate(quellen):
         setze_pruefung(nr, len(quellen))
         try:
-            feed_url = state["feeds"].get(quelle) or finde_feed(quelle)
-            state["feeds"][quelle] = feed_url
-            artikel = lese_artikel(hole(feed_url).content, feed_url, jetzt, grenze_alter)
+            weg = weg_fuer(quelle, state)
+            state["feeds"][quelle] = weg
+            artikel = lies_quelle(weg, state, jetzt, grenze_alter)
         except AbrufFehler as e:
-            state["feeds"].pop(quelle, None)  # beim nächsten Mal Feed neu suchen
+            state["feeds"].pop(quelle, None)  # beim nächsten Mal Weg neu suchen
             melde_fehler(cfg, state, quelle, str(e), test)
+            fehlerhaft += 1
+            continue
+        except Exception as e:  # z. B. präparierte Daten einer Seite – nur diese Quelle überspringen
+            log.exception("Unerwarteter Fehler bei %s", quelle)
+            state["feeds"].pop(quelle, None)
+            melde_fehler(cfg, state, quelle, f"Unerwarteter Fehler ({type(e).__name__}) – Quelle übersprungen, "
+                                              "die anderen laufen weiter. Details in newsbot.log.", test)
             fehlerhaft += 1
             continue
         for a in artikel:
@@ -734,7 +962,7 @@ def fange_fenster_schliessen_ab(cfg: dict) -> None:
 _fenster_handler = None
 
 
-def baue_listen() -> tuple[dict | None, str | None]:
+def baue_listen(state: dict) -> tuple[dict | None, str | None]:
     """Aktuelle Quellen und Tags für die Webseite – plus Prüfsumme, um nur Änderungen zu schicken."""
     try:
         quellen, _ = listen.lade_quellen(QUELLEN_DATEI)
@@ -742,8 +970,10 @@ def baue_listen() -> tuple[dict | None, str | None]:
     except OSError as e:
         log.warning("Quellen/Tags nicht lesbar: %s", e)
         return None, None
+    wege = {u: w["art"] for u, w in state["feeds"].items() if isinstance(w, dict) and w.get("art") in WEGE}
     daten = {"quellen": [{"wochentag": t, "url": u} for t, u in quellen],
-             "tags": [{"name": n, "woerter": w} for n, w in tags.items()]}
+             "tags": [{"name": n, "woerter": w} for n, w in tags.items()],
+             "wege": [{"url": u, "art": wege[u]} for u in dict.fromkeys(u for _, u in quellen) if u in wege]}
     return daten, hashlib.sha256(json.dumps(daten, sort_keys=True).encode()).hexdigest()
 
 
@@ -754,7 +984,7 @@ def synchronisiere(cfg: dict, state: dict) -> list[dict]:
     if not d["url"]:
         return []
     kopf = {"Authorization": f"Bearer {d['bot_token']}"}
-    listen_daten, pruefsumme = baue_listen()
+    listen_daten, pruefsumme = baue_listen(state)
     if _erster_sync:
         # Kompletter Stand statt nur Neues – so übernimmt die Seite auch einen geleerten Bot.
         nutzlast = {"status": baue_status(cfg, state), "artikel": state["verlauf"],

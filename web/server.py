@@ -139,6 +139,7 @@ class ArtikelIn(BaseModel):
     tags: list[Annotated[str, Field(max_length=60)]] = Field(default_factory=list, max_length=20)
     gemeldet: bool = False
     gefunden_um: str = Field(max_length=40)
+    weg: Literal["", "feed", "news_sitemap", "sitemap", "startseite"] = ""
 
 
 class FehlerIn(BaseModel):
@@ -192,10 +193,16 @@ class TagIn(BaseModel):
     woerter: list[Annotated[str, Field(max_length=100)]] = Field(max_length=100)
 
 
+class WegIn(BaseModel):
+    url: str = Field(max_length=600)
+    art: Literal["feed", "news_sitemap", "sitemap", "startseite"]
+
+
 class ListenIn(BaseModel):
     """Quellen und Tags, wie sie gerade in den CSV-Dateien auf dem PC stehen (nur zur Anzeige)."""
     quellen: list[QuelleIn] = Field(max_length=700)
     tags: list[TagIn] = Field(max_length=100)
+    wege: list[WegIn] = Field(default_factory=list, max_length=700)  # wie der Bot an die Artikel kommt
 
 
 class SyncIn(BaseModel):

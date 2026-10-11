@@ -12,6 +12,12 @@ const MAX_DATEI_BYTES = 2 * 1024 * 1024;
 const MAX_DATEI_ZEILEN = 20000;
 const VERBOTENE_URL_ZEICHEN = /[\s\\"<>`{}|^]/;
 const INTERNE_ENDUNGEN = [".localhost", ".local", ".lan", ".home", ".internal", ".intranet", ".corp", ".arpa"];
+const WEG_ANZEIGE = {
+  feed: ["RSS", "Liest den RSS/Atom-Feed der Seite – am zuverlässigsten."],
+  news_sitemap: ["News-Sitemap", "Kein Feed – liest die News-Sitemap der Seite (Titel und Zeit für Suchmaschinen)."],
+  sitemap: ["Sitemap", "Kein Feed – liest die Sitemap der Seite und holt Titel und Datum aus den Artikelseiten."],
+  startseite: ["Startseite", "Weder Feed noch Sitemap – erkennt neue Artikel-Links auf der Seite. Weniger zuverlässig."],
+};
 const TAG_KUERZEL = { mo: "montag", di: "dienstag", mi: "mittwoch", do: "donnerstag", fr: "freitag", sa: "samstag", so: "sonntag" };
 
 const wartetAuf = { quellen: null, tags: null };  // Befehl, dessen Ergebnis wir anzeigen wollen
@@ -143,7 +149,7 @@ function zeichneQuellen() {
   const suche = klein($("quellen-suche").value.trim());
   const heute = heutigerTag();
   const offen = offeneBefehle(["quellen_hinzufuegen", "quellen_entfernen", "quellen_importieren"]);
-  const schluessel = JSON.stringify([quellen, offen.map((b) => b.id), suche, heute, daten.bot.online]);
+  const schluessel = JSON.stringify([quellen, daten.listen?.wege, offen.map((b) => b.id), suche, heute, daten.bot.online]);
   if (schluessel === letzteAnsicht.quellen) return;
   letzteAnsicht.quellen = schluessel;
 
@@ -193,6 +199,8 @@ function quellenZeile(z, heute) {
         el("span", { class: "quelle-host" }, host), pfad ? el("span", { class: "quelle-pfad" }, pfad) : null)
     : el("span", { class: "quelle-link" }, z.url);
   const nurWartend = z.tage.size === 0;
+  const weg = (daten.listen?.wege || []).find((w) => w.url === z.url);
+  const [wegText, wegTitel] = weg ? WEG_ANZEIGE[weg.art] || [] : [];
 
   const zellen = TAGE.map(([k, lang, tagKurz]) => {
     const an = z.tage.has(k);
@@ -207,7 +215,8 @@ function quellenZeile(z, heute) {
   });
 
   return el("tr", { class: nurWartend ? "wartend" : "" },
-    el("td", { class: "quelle-zelle" }, link),
+    el("td", { class: "quelle-zelle" }, el("div", { class: "quelle-inhalt" }, link,
+      wegText ? el("span", { class: `weg-marke weg-${weg.art}`, title: wegTitel }, wegText) : null)),
     ...zellen,
     el("td", { class: "aktion-zelle" }, nurWartend ? null
       : el("button", { type: "button", class: "symbol-knopf gefahr", title: "An allen Tagen entfernen",

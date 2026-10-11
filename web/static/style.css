@@ -534,6 +534,11 @@ code { padding: 1px 5px; border-radius: 4px; background: var(--chip); color: var
 .quellen-tabelle td.aktion-zelle { padding-right: 12px; }
 .quellen-tabelle tr.wartend .quelle-link { opacity: 0.7; }
 
+.quelle-inhalt { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.quelle-inhalt .quelle-link { flex: 0 1 auto; }
+.weg-marke { flex: none; padding: 1px 8px; border-radius: 4px; background: var(--chip); color: var(--chip-text); font-size: 12px; font-weight: 600; cursor: help; }
+.weg-marke.weg-news_sitemap, .weg-marke.weg-sitemap { background: rgba(124, 196, 255, 0.12); color: var(--fokus); }
+.weg-marke.weg-startseite { background: rgba(245, 165, 36, 0.14); color: var(--akzent); }
 .quelle-link { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-hell); }
 .quelle-host { font-weight: 600; }
 .quelle-pfad { color: var(--leise); font-size: 14px; }

@@ -196,6 +196,30 @@ andere Dateien anfassen oder Einstellungen in `config.toml` ändern kann sie nic
 automatisch in `tags.csv`. Eine alte `quellen.xlsx` wird nicht mehr gelesen – ihre Quellen einmal
 über die Webseite eintragen und die Excel-Datei danach löschen.
 
+## Seiten ohne RSS-Feed
+
+Der Bot probiert pro Quelle der Reihe nach, bis etwas klappt:
+
+1. **RSS/Atom-Feed** – die Adresse selbst, ein Feed-Hinweis in der Seite oder übliche Pfade wie `/rss`.
+2. **News-Sitemap** – die Liste, die Nachrichtenseiten für Google News bereitstellen (Titel und
+   Veröffentlichungszeit). Gefunden über die `robots.txt` oder übliche Pfade.
+3. **Normale Sitemap** – Adressen mit Änderungsdatum.
+4. **Startseite** (Notlösung) – der Bot erkennt neue Artikel-Links auf der eingetragenen Seite.
+   Beim allerersten Mal meldet er nur die obersten 10, alles andere merkt er sich als bekannt.
+
+Bei 2–4 holt er Titel, Zusammenfassung, Autor und Datum aus den öffentlichen Angaben der Artikelseite
+(die Daten für Suchmaschinen und soziale Netzwerke) – Paywalls umgeht er nicht. Höchstens
+20 Artikelseiten pro Quelle und Prüfung; der Rest kommt bei der nächsten Prüfung. Ohne Feed schaut
+er einmal am Tag nach, ob es inzwischen einen gibt. In der Quellen-Tabelle steht bei jeder Quelle,
+welcher Weg genutzt wird, in den Artikel-Details „über Sitemap“ bzw. „über Startseite“.
+
+Sitemaps werden mit `defusedxml` gelesen (präparierte XML-Dateien werden abgelehnt), jede Antwort ist
+auf wenige MB begrenzt – auch gepackt. Es gelten dieselben Regeln wie für Feeds: nur öffentliche
+Server, `robots.txt`, 1 Sekunde Pause zwischen Abrufen.
+
+Tipp: Bei einer Ressortseite (z. B. nur „Wirtschaft“) liefern Sitemaps die Artikel der *ganzen*
+Seite. Gibt es für das Ressort einen eigenen Feed, trag besser den ein.
+
 ## Gut zu wissen
 
 - **Neu anfangen:** Bot beenden und `bot/state.json` löschen – er vergisst dann alle gesehenen
@@ -225,6 +249,7 @@ automatisch in `tags.csv`. Eine alte `quellen.xlsx` wird nicht mehr gelesen – 
 | `bot/news_bot.py` | der Bot |
 | `bot/webpush.py` | verschickt die Browser-Benachrichtigungen |
 | `bot/listen.py` | liest, prüft und ändert `quellen.csv` und `tags.csv` |
+| `bot/seiten.py` | Seiten ohne Feed: Sitemaps, Angaben aus Artikelseiten, Links der Startseite |
 | `bot/config.toml` | alle Einstellungen |
 | `bot/quellen.csv` | deine Quellen nach Wochentag (entsteht automatisch) |
 | `bot/tags.csv` | deine Tags und Schlagwörter (entsteht automatisch) |

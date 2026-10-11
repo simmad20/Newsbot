@@ -260,6 +260,8 @@ let farbeVon = new Map();          // Medium → Farbnummer, damit jede Quelle �
 const offeneArtikel = new Set();   // aufgeklappte Details bleiben beim Aktualisieren offen
 let letzteArtikelAnsicht = "";
 
+const WEG_TEXT = { feed: "RSS-Feed", news_sitemap: "News-Sitemap", sitemap: "Sitemap", startseite: "Startseite (Seite ohne Feed)" };
+
 function datumLang(iso) {
   const d = iso ? new Date(iso) : null;
   return d && !isNaN(d) ? `${fmtDatumLang.format(d)} Uhr` : null;
@@ -440,7 +442,8 @@ function artikelKarte(a, kompakt) {
       ...detailFeld(a.datum_art === "aktualisiert" ? "Aktualisiert" : "Veröffentlicht", datumOk
         ? `${datumLang(a.datum)} (${vorZeit(a.datum) || "gerade eben"})`
         : el("span", { class: "warnung-text" }, "Der Feed nennt kein Datum – bitte im Artikel prüfen")),
-      ...detailFeld("Gefunden", datumLang(a.gefunden_um) || "–"),
+      ...detailFeld("Gefunden", datumLang(a.gefunden_um) || "–",
+        a.weg && a.weg !== "feed" ? el("span", { class: "leise" }, ` · über ${WEG_TEXT[a.weg] || a.weg}`) : null),
       ...detailFeld("Benachrichtigung", benachrichtigung),
       ...detailFeld("Tags", a.tags.length
         ? el("ul", { class: "tags" }, ...a.tags.map((t) => el("li", {}, t)))
