@@ -31,7 +31,7 @@ from typing import Annotated, Literal, Optional
 from urllib.parse import parse_qs, urlparse
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
@@ -454,15 +454,40 @@ async def sicherheits_header(request: Request, call_next):
     )
     antwort.headers["X-Content-Type-Options"] = "nosniff"
     antwort.headers["Referrer-Policy"] = "no-referrer"
-    antwort.headers["Cache-Control"] = "no-store"
+    antwort.headers["Cache-Control"] = cache_regel(request, antwort.status_code)
     return antwort
+
+
+def cache_regel(request: Request, status: int) -> str:
+    """Seiten und Daten nie zwischenspeichern. CSS, Skripte und Schriften dagegen schon – sonst lädt der
+    Browser sie bei jedem Aufruf neu und zeigt die Seite kurz ohne Gestaltung. Über ?v=… (Prüfsumme der
+    Dateien) holt er nach einem Update automatisch die neue Fassung."""
+    pfad = request.url.path
+    if status != 200 or not (pfad.startswith("/static/") or pfad in ("/sw.js", "/manifest.webmanifest")):
+        return "no-store"
+    if pfad.startswith("/static/fonts/") or request.query_params.get("v") == VERSION:
+        return "public, max-age=31536000, immutable"
+    return "no-cache"  # darf gespeichert werden, wird aber vor jeder Nutzung kurz nachgefragt
 
 
 # --------------------------------------------------------------------------- Seiten
 
+STATISCH = {"app.js", "verwaltung.js", "login.js", "style.css", "icon-192.png", "icon-512.png"}
+VERSION = hashlib.sha256(b"".join((STATIC / d).read_bytes() for d in sorted(STATISCH))).hexdigest()[:12]
+
+
+def _mit_version(name: str) -> str:
+    """HTML einmal beim Start vorbereiten: CSS/JS-Verweise bekommen die aktuelle Version angehängt."""
+    html = (STATIC / name).read_text(encoding="utf-8")
+    return re.sub(r'"(/static/[\w.-]+\.(?:css|js))"', rf'"\1?v={VERSION}"', html)
+
+
+SEITEN = {name: _mit_version(name) for name in ("index.html", "login.html")}
+
+
 @app.get("/")
 def startseite(request: Request):
-    return FileResponse(STATIC / ("index.html" if eingeloggt(request) else "login.html"))
+    return HTMLResponse(SEITEN["index.html" if eingeloggt(request) else "login.html"])
 
 
 @app.get("/sw.js")
@@ -488,8 +513,7 @@ def schrift(datei: str):
 
 @app.get("/static/{datei}")
 def statisch(datei: str):
-    erlaubt = {"app.js", "verwaltung.js", "login.js", "style.css", "icon-192.png", "icon-512.png"}
-    if datei not in erlaubt:
+    if datei not in STATISCH:
         raise HTTPException(404)
     return FileResponse(STATIC / datei)
 
