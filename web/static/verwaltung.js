@@ -26,6 +26,8 @@ const ICON = {
   muell: ["M3 6h18", "M8 6V4h8v2", "M19 6l-1 14H6L5 6", "M10 11v6", "M14 11v6"],
   plus: ["M12 5v14", "M5 12h14"],
   x: ["M18 6 6 18", "m6 6 12 12"],
+  extern: ["M15 3h6v6", "M10 14 21 3", "M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"],
+  pfeil: ["m6 9 6 6 6-6"],
 };
 
 function symbol(pfade, groesse = 18) {

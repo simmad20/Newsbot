@@ -357,7 +357,7 @@ def lese_artikel(feed_inhalt: bytes, feed_url: str, jetzt: datetime, grenze: tim
             "schluessel": [url] + ([f"id:{e.id}"] if e.get("id") else []),
             "url": url,
             "titel": text_aus_html(e.get("title", "(ohne Titel)"), 250),
-            "teaser": text_aus_html(e.get("summary", "")),
+            "teaser": text_aus_html(e.get("summary", ""), 1000),  # ganze Vorschau für die Details auf der Seite
             "autor": text_aus_html(e.get("author") or "", 150),
             "medium": medium,
             "datum": datum,

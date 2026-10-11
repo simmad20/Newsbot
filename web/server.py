@@ -132,7 +132,7 @@ class ArtikelIn(BaseModel):
     url: str = Field(max_length=2000, pattern=r"^https?://")
     titel: str = Field(max_length=300)
     medium: str = Field(max_length=200)
-    teaser: str = Field("", max_length=700)
+    teaser: str = Field("", max_length=1200)
     autor: str = Field("", max_length=200)
     datum: Optional[str] = Field(None, max_length=40)
     datum_art: str = Field("", max_length=20)

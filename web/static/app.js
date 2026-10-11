@@ -250,9 +250,41 @@ REITER.forEach((r, i) => {
 
 // ---------------------------------------------------------------- Artikel
 
+const fmtDatumLang = new Intl.DateTimeFormat("de-AT", {
+  timeZone: ZONE, weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
+const fmtTagKurz = new Intl.DateTimeFormat("de-AT", { timeZone: ZONE, weekday: "short", day: "2-digit", month: "2-digit" });
+const QUELL_FARBEN = 8;
+const ANSICHT_SCHLUESSEL = "newsbot_artikel_ansicht";
+let ansicht = (() => { try { return localStorage.getItem(ANSICHT_SCHLUESSEL) === "quelle" ? "quelle" : "zeit"; } catch { return "zeit"; } })();
+let farbeVon = new Map();          // Medium → Farbnummer, damit jede Quelle überall gleich aussieht
+const offeneArtikel = new Set();   // aufgeklappte Details bleiben beim Aktualisieren offen
+let letzteArtikelAnsicht = "";
+
+function datumLang(iso) {
+  const d = iso ? new Date(iso) : null;
+  return d && !isNaN(d) ? `${fmtDatumLang.format(d)} Uhr` : null;
+}
+
+function vorZeit(iso) {
+  const sekunden = Math.round((Date.now() - Date.parse(iso)) / 1000);
+  return Number.isFinite(sekunden) && sekunden >= 0 ? vorText(sekunden) : null;
+}
+
+function hostVon(url) {
+  try { return new URL(url).host.replace(/^www\./, ""); } catch { return ""; }
+}
+
+function kurzId(text) {
+  let h = 0;
+  for (const c of text) h = (h * 31 + c.codePointAt(0)) >>> 0;
+  return h.toString(36);
+}
+
 function zeichneFilterOptionen() {
   fuelleAuswahl($("filter-tag"), "Alle Tags", daten.artikel.flatMap((a) => a.tags));
-  fuelleAuswahl($("filter-medium"), "Alle Medien", daten.artikel.map((a) => a.medium));
+  fuelleAuswahl($("filter-medium"), "Alle Quellen", daten.artikel.map((a) => a.medium));
+  const medien = [...new Set(daten.artikel.map((a) => a.medium))].sort((a, b) => a.localeCompare(b, "de"));
+  farbeVon = new Map(medien.map((m, i) => [m, i % QUELL_FARBEN]));
 }
 
 function fuelleAuswahl(auswahl, leerText, werte) {
@@ -273,7 +305,7 @@ function gefilterteArtikel() {
     (!tag || a.tags.includes(tag)) &&
     (!medium || a.medium === medium) &&
     (!nurGemeldet || a.gemeldet) &&
-    (!suche || `${a.titel} ${a.teaser}`.toLowerCase().includes(suche))
+    (!suche || `${a.titel} ${a.teaser} ${a.autor} ${a.medium}`.toLowerCase().includes(suche))
   );
 }
 
@@ -282,6 +314,18 @@ function trennerText(ms) {
   const kurz = tagText(d);
   const lang = fmtTagLang.format(d);
   return kurz === "heute" ? `Heute · ${lang}` : kurz === "gestern" ? `Gestern · ${lang}` : lang;
+}
+
+function zeichneMedienLeiste() {
+  const zaehler = new Map();
+  for (const a of daten.artikel) zaehler.set(a.medium, (zaehler.get(a.medium) || 0) + 1);
+  const aktiv = $("filter-medium").value;
+  const leiste = $("medien-leiste");
+  leiste.hidden = zaehler.size < 2;
+  leiste.replaceChildren(...[...zaehler].sort((x, y) => y[1] - x[1] || x[0].localeCompare(y[0], "de")).map(([m, n]) =>
+    el("li", {}, el("button", { type: "button", class: `medium-chip farbe-${farbeVon.get(m) ?? 0}`, "aria-pressed": String(aktiv === m),
+      title: aktiv === m ? "Filter aufheben" : `Nur ${m} anzeigen`, "data-medium": m, "data-fokus": `m|${m}` },
+      el("span", { class: "farb-punkt", "aria-hidden": "true" }), el("span", { class: "medium-name" }, m), el("span", { class: "zahl" }, String(n))))));
 }
 
 function zeichneTicker() {
@@ -296,34 +340,56 @@ function zeichneTicker() {
   $("anzahl").textContent = !gesamt ? ""
     : artikel.length === gesamt ? `${gesamt} Artikel${neuZahl ? `, davon ${neuZahl} neu seit deinem letzten Besuch` : ""}`
     : `${artikel.length} von ${gesamt} Artikeln passen zu den Filtern`;
+  document.querySelectorAll("[data-ansicht]").forEach((k) => k.setAttribute("aria-pressed", String(k.dataset.ansicht === ansicht)));
 
+  // Nur neu zeichnen, wenn sich etwas geändert hat (sonst springen Fokus und Auswahl alle 10 Sekunden)
+  const schluessel = JSON.stringify([daten.artikel.map((a) => [a.url, a.gemeldet, a.tags]), artikel.length, sichtbar, ansicht, gesehenBis,
+    $("filter-medium").value, [...offeneArtikel], fmtTagSchluessel.format(new Date()), Math.floor(Date.now() / 60000),
+    daten.bot.status ? [daten.bot.status.quellen_heute, daten.bot.status.nur_mit_tags] : null,
+    $("suche").value, $("filter-tag").value, $("nur-gemeldet").checked]);
+  if (schluessel === letzteArtikelAnsicht) return;
+  letzteArtikelAnsicht = schluessel;
+
+  zeichneMedienLeiste();
   mehr.hidden = true;
-  if (!gesamt) {
-    liste.replaceChildren(el("li", { class: "leer" },
-      daten.bot.status
-        ? daten.bot.status.quellen_heute
-          ? "Noch keine Artikel. Mit „Jetzt prüfen“ startest du sofort eine Prüfung."
-          : "Noch keine Artikel. Für heute sind keine Quellen eingetragen – im Reiter „Quellen“ kannst du welche hinzufügen."
-        : "Sobald der Bot verbunden ist, erscheinen hier die gefundenen Artikel."));
-    return;
-  }
-  if (!artikel.length) {
-    liste.replaceChildren(el("li", { class: "leer" }, "Kein Artikel passt zu diesen Filtern."));
+  if (!gesamt || !artikel.length) {
+    const text = gesamt ? "Kein Artikel passt zu diesen Filtern."
+      : !daten.bot.status ? "Sobald der Bot verbunden ist, erscheinen hier die gefundenen Artikel."
+      : daten.bot.status.quellen_heute ? "Noch keine Artikel. Mit „Jetzt prüfen“ startest du sofort eine Prüfung."
+      : "Noch keine Artikel. Für heute sind keine Quellen eingetragen – im Reiter „Quellen“ kannst du welche hinzufügen.";
+    liste.replaceChildren(el("p", { class: "leer" }, text));
     return;
   }
 
-  const zeilen = [];
-  let letzterTag = null;
+  // Nach Tagen gruppieren; in der Ansicht „Nach Quelle“ innerhalb jedes Tages nach Medium
+  const tage = [];
   for (const a of artikel.slice(0, sichtbar)) {
     const ms = zeitpunkt(a);
-    const tag = fmtTagSchluessel.format(new Date(ms));
-    if (tag !== letzterTag) {
-      zeilen.push(el("li", { class: "trenner" }, trennerText(ms)));
-      letzterTag = tag;
-    }
-    zeilen.push(artikelZeile(a));
+    const k = fmtTagSchluessel.format(new Date(ms));
+    if (!tage.length || tage.at(-1).k !== k) tage.push({ k, ms, artikel: [] });
+    tage.at(-1).artikel.push(a);
   }
-  liste.replaceChildren(...zeilen);
+  const teile = [];
+  for (const t of tage) {
+    teile.push(el("h2", { class: "tag-trenner" }, trennerText(t.ms),
+      el("span", { class: "trenner-zahl" }, anzahl(t.artikel.length, "Artikel", "Artikel"))));
+    if (ansicht === "zeit") {
+      teile.push(el("ol", { class: "artikel-liste" }, ...t.artikel.map((a) => artikelKarte(a, false))));
+      continue;
+    }
+    const gruppen = new Map();  // Reihenfolge: Quelle mit dem neuesten Artikel zuerst
+    for (const a of t.artikel) (gruppen.get(a.medium) || gruppen.set(a.medium, []).get(a.medium)).push(a);
+    for (const [m, liste_] of gruppen) {
+      teile.push(el("section", { class: `quelle-gruppe farbe-${farbeVon.get(m) ?? 0}`, "aria-label": `${m}: ${anzahl(liste_.length, "Artikel", "Artikel")}` },
+        el("header", { class: "quelle-kopf" },
+          el("span", { class: "farb-punkt", "aria-hidden": "true" }),
+          el("h3", {}, m),
+          el("span", { class: "zahl" }, String(liste_.length)),
+          el("span", { class: "quelle-host" }, hostVon(liste_[0].url))),
+        el("ol", { class: "artikel-liste kompakt" }, ...liste_.map((a) => artikelKarte(a, true)))));
+    }
+  }
+  zeichneErhaltend(liste, () => liste.replaceChildren(...teile));
 
   const rest = artikel.length - sichtbar;
   if (rest > 0) {
@@ -332,38 +398,116 @@ function zeichneTicker() {
   }
 }
 
-function artikelZeile(a) {
+function detailFeld(name, ...wert) {
+  return [el("dt", {}, name), el("dd", {}, ...wert)];
+}
+
+function artikelKarte(a, kompakt) {
   const d = a.datum ? new Date(a.datum) : null;
-  const zeit = d && !isNaN(d)
-    ? el("div", { class: "zeit" }, el("div", { class: "zeit-wert" }, fmtZeit.format(d)),
-        a.datum_art === "aktualisiert" ? el("small", {}, "aktualisiert") : null)
-    : el("div", { class: "zeit" }, el("div", { class: "zeit-wert unsicher" }, "?"), el("small", {}, "Datum unklar"));
-
+  const datumOk = d && !isNaN(d);
   const url = sichereUrl(a.url);
-  const titel = url
-    ? el("a", { class: "titel", href: url, target: "_blank", rel: "noopener noreferrer" }, a.titel)
-    : el("span", { class: "titel" }, a.titel);
+  const offen = offeneArtikel.has(a.url);
+  const id = `artikel-${kurzId(a.url)}`;
+  const status = daten.bot.status;
 
-  const kopf = el("div", { class: "titel-zeile" }, istNeu(a) ? el("span", { class: "neu-marke" }, "neu") : null, titel);
-  const quelle = el("p", { class: "quelle" },
-    a.medium, a.autor ? `, ${a.autor}` : "",
-    a.gemeldet ? el("span", { class: "gemeldet-hinweis" }, "gemeldet") : "");
+  const zeit = el("div", { class: "artikel-zeit" }, ...(datumOk
+    ? [el("span", { class: "zeit-wert" }, fmtZeit.format(d)), el("span", { class: "zeit-datum" }, fmtTagKurz.format(d))]
+    : [el("span", { class: "zeit-wert unsicher" }, "?"), el("span", { class: "zeit-datum" }, "kein Datum")]));
 
-  return el("li", { class: "artikel" },
+  const marken = el("div", { class: "artikel-marken" },
+    kompakt ? null : el("span", { class: "medium-marke" }, el("span", { class: "farb-punkt", "aria-hidden": "true" }), a.medium),
+    istNeu(a) ? el("span", { class: "neu-marke" }, "neu") : null,
+    a.gemeldet ? el("span", { class: "gemeldet-marke", title: "Benachrichtigung wurde gesendet" }, "gemeldet") : null,
+    datumOk && a.datum_art === "aktualisiert" ? el("span", { class: "hinweis-marke", title: "Der Feed nennt nur das Aktualisierungsdatum" }, "aktualisiert") : null);
+
+  const titel = el("h3", { class: "artikel-titel" }, url
+    ? el("a", { href: url, target: "_blank", rel: "noopener noreferrer" }, a.titel)
+    : a.titel);
+
+  const meta = [a.autor ? `von ${a.autor}` : null, datumOk ? vorZeit(a.datum) : null, kompakt ? null : hostVon(a.url)].filter(Boolean);
+
+  let benachrichtigung = "gesendet";
+  if (!a.gemeldet) {
+    benachrichtigung = status && status.nur_mit_tags && !a.tags.length
+      ? "nicht gesendet – es werden nur Artikel mit Tags gemeldet"
+      : "nicht gesendet";
+  }
+
+  const details = offen ? el("div", { class: "artikel-details", id },
+    el("dl", { class: "details-raster" },
+      ...detailFeld("Quelle", a.medium, el("span", { class: "leise" }, ` · ${hostVon(a.url)}`)),
+      ...detailFeld("Autor", a.autor || el("span", { class: "leise" }, "im Feed nicht angegeben")),
+      ...detailFeld(a.datum_art === "aktualisiert" ? "Aktualisiert" : "Veröffentlicht", datumOk
+        ? `${datumLang(a.datum)} (${vorZeit(a.datum) || "gerade eben"})`
+        : el("span", { class: "warnung-text" }, "Der Feed nennt kein Datum – bitte im Artikel prüfen")),
+      ...detailFeld("Gefunden", datumLang(a.gefunden_um) || "–"),
+      ...detailFeld("Benachrichtigung", benachrichtigung),
+      ...detailFeld("Tags", a.tags.length
+        ? el("ul", { class: "tags" }, ...a.tags.map((t) => el("li", {}, t)))
+        : el("span", { class: "leise" }, "keine"))),
+    el("div", { class: "zusammenfassung" },
+      el("h4", {}, "Zusammenfassung laut Feed"),
+      el("p", {}, a.teaser || "Der Feed liefert keinen Vorschautext – bitte den Artikel öffnen.")),
+    url ? el("div", { class: "details-aktionen" },
+      el("a", { class: "knopf haupt mit-symbol", href: url, target: "_blank", rel: "noopener noreferrer" },
+        el("span", {}, "Artikel öffnen"), symbol(ICON.extern, 16)),
+      el("button", { type: "button", class: "knopf", "data-kopieren": url, "data-fokus": `k|${a.url}` }, "Link kopieren")) : null) : null;
+
+  const knopfAttr = { type: "button", class: "details-knopf", "aria-expanded": String(offen), "data-details": a.url, "data-fokus": `d|${a.url}` };
+  if (offen) knopfAttr["aria-controls"] = id;
+
+  return el("li", { class: `artikel farbe-${farbeVon.get(a.medium) ?? 0}${offen ? " offen" : ""}${istNeu(a) ? " ist-neu" : ""}` },
     zeit,
-    el("div", {},
-      kopf,
-      quelle,
-      a.teaser ? el("p", { class: "teaser" }, a.teaser) : null,
-      a.tags.length ? el("ul", { class: "tags", "aria-label": "Tags" }, ...a.tags.map((t) => el("li", {}, t))) : null,
-    ),
-  );
+    el("div", { class: "artikel-inhalt" },
+      marken.childElementCount ? marken : null,
+      titel,
+      meta.length ? el("p", { class: "artikel-meta" }, meta.join(" · ")) : null,
+      a.teaser && !offen ? el("p", { class: "teaser" }, a.teaser) : null,
+      el("div", { class: "artikel-fuss" },
+        a.tags.length && !offen ? el("ul", { class: "tags", "aria-label": "Tags" }, ...a.tags.map((t) => el("li", {}, t))) : null,
+        el("button", knopfAttr, offen ? "Weniger" : "Details", symbol(ICON.pfeil, 16))),
+      details));
 }
 
 $("mehr").addEventListener("click", () => {
   sichtbar += PRO_SEITE;
   zeichneTicker();
 });
+
+$("ticker").addEventListener("click", async (e) => {
+  const details = e.target.closest("button[data-details]");
+  if (details) {
+    const url = details.dataset.details;
+    if (offeneArtikel.has(url)) offeneArtikel.delete(url);
+    else offeneArtikel.add(url);
+    zeichneTicker();
+    return;
+  }
+  const kopieren = e.target.closest("button[data-kopieren]");
+  if (!kopieren) return;
+  try {
+    await navigator.clipboard.writeText(kopieren.dataset.kopieren);
+    kopieren.textContent = "Kopiert";
+  } catch {
+    kopieren.textContent = "Kopieren nicht möglich";
+  }
+  setTimeout(() => { kopieren.textContent = "Link kopieren"; }, 2000);
+});
+
+$("medien-leiste").addEventListener("click", (e) => {
+  const chip = e.target.closest("button[data-medium]");
+  if (!chip) return;
+  const auswahl = $("filter-medium");
+  auswahl.value = auswahl.value === chip.dataset.medium ? "" : chip.dataset.medium;
+  sichtbar = PRO_SEITE;
+  zeichneTicker();
+});
+
+document.querySelectorAll("[data-ansicht]").forEach((knopf) => knopf.addEventListener("click", () => {
+  ansicht = knopf.dataset.ansicht;
+  try { localStorage.setItem(ANSICHT_SCHLUESSEL, ansicht); } catch { /* egal */ }
+  if (daten) zeichneTicker();
+}));
 
 // ---------------------------------------------------------------- Fehler & Befehle
 
