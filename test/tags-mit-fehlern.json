@@ -1,0 +1,21 @@
+{
+  "Test": [
+    "gültig",
+    "auch gültig*",
+    "-minus",
+    "+plus",
+    "@at",
+    "=SUMME(1+1)",
+    "<script>alert(1)</script>",
+    "mit*stern"
+  ],
+  "=HYPERLINK(\"https://example.com\")": [
+    "harmlos"
+  ],
+  "<b>Fett</b>": [
+    "harmlos"
+  ],
+  "@Angriff": [
+    "harmlos"
+  ]
+}

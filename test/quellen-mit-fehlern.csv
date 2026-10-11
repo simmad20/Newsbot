@@ -1,0 +1,12 @@
+﻿Wochentag;URL
+Montag;https://www.derstandard.at/rss
+Dienstag;http://192.168.0.1/admin
+Mittwoch;http://localhost:8080/feed
+Donnerstag;http://127.0.0.1/
+Freitag;file:///C:/Windows/win.ini
+Samstag;javascript:alert(1)
+Sonntag;"=HYPERLINK(""https://example.com"")"
+Montag;https://benutzer:passwort@example.com
+Blatag;https://rss.orf.at/news.xml
+=cmd|' /C calc'!A0;https://rss.orf.at/news.xml
+Freitag;https://www.heise.de/rss/heise-atom.xml

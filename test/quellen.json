@@ -1,0 +1,31 @@
+{
+  "montag": [
+    "https://www.derstandard.at/rss",
+    "https://www.spiegel.de/schlagzeilen/index.rss",
+    "kurier.at"
+  ],
+  "dienstag": [
+    "https://www.tagesschau.de/xml/rss2/",
+    "https://krebsonsecurity.com/feed/"
+  ],
+  "mittwoch": [
+    "https://newsfeed.zeit.de/index",
+    "https://www.theverge.com/rss/index.xml"
+  ],
+  "donnerstag": [
+    "https://www.spiegel.de/schlagzeilen/index.rss",
+    "diepresse.com"
+  ],
+  "freitag": [
+    "https://www.derstandard.at/rss",
+    "https://krebsonsecurity.com/feed/",
+    "https://www.theverge.com/rss/index.xml"
+  ],
+  "samstag": [
+    "https://newsfeed.zeit.de/index"
+  ],
+  "sonntag": [
+    "https://www.spiegel.de/schlagzeilen/index.rss",
+    "kurier.at"
+  ]
+}

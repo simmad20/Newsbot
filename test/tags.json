@@ -1,0 +1,40 @@
+{
+  "Cyberkriminalität": [
+    "ransomware",
+    "erpress*",
+    "schadsoftware",
+    "trojaner*"
+  ],
+  "Datenschutz": [
+    "dsgvo",
+    "cookie*",
+    "datenleck*"
+  ],
+  "Sport": [
+    "fußball*",
+    "tennis",
+    "skifahr*",
+    "olympia*",
+    "bundesliga"
+  ],
+  "Wetter": [
+    "unwetter*",
+    "hochwasser",
+    "hitzewelle",
+    "sturm*",
+    "lawine*"
+  ],
+  "Gesundheit": [
+    "impf*",
+    "krankenhaus*",
+    "pandemie",
+    "grippe*"
+  ],
+  "Weltraum": [
+    "nasa",
+    "esa",
+    "rakete*",
+    "raumfahrt*",
+    "mars"
+  ]
+}
