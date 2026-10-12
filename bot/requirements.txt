@@ -4,4 +4,4 @@ urllib3>=2.3,<3  # read1() für die Zeitgrenze beim Herunterladen
 cryptography>=42  # für die Browser-Benachrichtigungen
 tzdata>=2024.1  # Zeitzonen-Daten für Windows
 defusedxml>=0.7.1,<1  # Sitemaps sicher lesen
-anthropic>=1.13,<2  # Claude vergibt die Tags (ki_tags.py)
+# Nur für Tags per Claude zusätzlich: pip install "anthropic>=1.13,<2"  (DeepSeek braucht nichts extra)

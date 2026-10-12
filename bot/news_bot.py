@@ -1,8 +1,8 @@
 """News-Bot (Hobby-Version) – läuft auf deinem PC.
 
 Liest aus quellen.csv die Quellen für den heutigen Wochentag, prüft deren
-RSS/Atom-Feeds auf neue Artikel (max. 24 h alt), lässt Claude passende Tags aus
-tags.csv auswählen (ki_tags.py) und meldet sie als Browser-Benachrichtigung über
+RSS/Atom-Feeds auf neue Artikel (max. 24 h alt), lässt eine KI (DeepSeek oder Claude) passende
+Tags aus tags.csv auswählen (ki_tags.py) und meldet sie als Browser-Benachrichtigung über
 dein Dashboard auf Render und/oder an Discord. Das Dashboard zeigt Status, Artikel, Fehler, Quellen und Tags und nimmt
 Befehle entgegen – auch neue Quellen und Tags. Alles Gemerkte liegt in state.json.
 
@@ -602,10 +602,10 @@ def vergib_tags(cfg: dict, state: dict, artikel: list[dict], tags: dict[str, str
     try:
         ki_tags.TagVergabe(ki_tags.einstellungen(cfg), tags).vergib(artikel)
     except ki_tags.KiFehler as e:
-        melde_fehler(cfg, state, "Tags (Claude-API)", f"Tags konnten nicht vergeben werden: {e}", test, discord=False)
+        melde_fehler(cfg, state, "Tags (KI)", f"Tags konnten nicht vergeben werden: {e}", test, discord=False)
     except Exception as e:  # unerwartet – die Prüfung läuft trotzdem weiter
         log.exception("Unerwarteter Fehler bei der Tag-Vergabe")
-        melde_fehler(cfg, state, "Tags (Claude-API)", f"Unerwarteter Fehler ({type(e).__name__}) – Details in newsbot.log",
+        melde_fehler(cfg, state, "Tags (KI)", f"Unerwarteter Fehler ({type(e).__name__}) – Details in newsbot.log",
                      test, discord=False)
 
 
@@ -1199,7 +1199,7 @@ def main() -> None:
     cfg = lade_config()
     listen.richte_ein(QUELLEN_DATEI, TAGS_DATEI, cfg.get("tags"))
     llm = ki_tags.einstellungen(cfg)
-    log.info("Tags vergibt %s.", llm["modell"] if llm["api_key"]
+    log.info("Tags vergibt %s.", f"{ki_tags.NAMEN[llm['anbieter']]} ({llm['modell']})" if llm["api_key"]
              else "niemand – kein API-Schlüssel in config.toml unter [llm] (Artikel kommen ohne Tags)")
 
     if args.test:

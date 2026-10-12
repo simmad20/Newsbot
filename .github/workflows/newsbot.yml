@@ -31,7 +31,7 @@ jobs:
           cache: pip
           cache-dependency-path: bot/requirements.txt
 
-      - run: pip install -r requirements.txt
+      - run: pip install -r requirements.txt "anthropic>=1.13,<2"
 
       # Stand vom letzten Lauf: gesehene Artikel, Geräte, Quellen, Tags, Push-Schlüssel
       - uses: actions/cache/restore@v4
@@ -50,6 +50,7 @@ jobs:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
         run: |
           python - <<'EOF'
           import json, os
@@ -57,7 +58,7 @@ jobs:
           with open("config.toml", "w", encoding="utf-8") as f:
               f.write(f"discord_webhook = {wert('DISCORD_WEBHOOK')}\n\n"
                       f"[dashboard]\nurl = {wert('DASHBOARD_URL')}\nbot_token = {wert('BOT_TOKEN')}\n\n"
-                      f"[llm]\napi_key = {wert('ANTHROPIC_API_KEY')}\n")
+                      f"[llm]\napi_key = {wert('DEEPSEEK_API_KEY') if os.environ.get('DEEPSEEK_API_KEY', '').strip() else wert('ANTHROPIC_API_KEY')}\n")
           EOF
 
       - run: python news_bot.py --einmal

@@ -1,6 +1,6 @@
 # News-Bot mit eigener Webseite
 
-Ein kleiner Nachrichten-Bot für den Eigengebrauch – ohne Discord, die Tags vergibt Claude.
+Ein kleiner Nachrichten-Bot für den Eigengebrauch – ohne Discord, die Tags vergibt eine KI (DeepSeek oder Claude).
 
 ```
    Dein PC                                   Render (kostenlos)
@@ -16,7 +16,7 @@ Ein kleiner Nachrichten-Bot für den Eigengebrauch – ohne Discord, die Tags ve
      │ Titel +      │ verschlüsselte Benachrichtigung
      │ Vorschau     ▼
      ▼            Push-Dienst deines Browsers (Google, Apple, Mozilla, Microsoft) ──► Handy / PC
-   Claude-API: wählt passende Tags aus tags.csv
+   KI-API (DeepSeek oder Claude): wählt passende Tags aus tags.csv
 ```
 
 **Warum so aufgeteilt?** Kostenlose Render-Dienste schlafen nach 15 Minuten ohne Besuch ein und
@@ -25,8 +25,8 @@ alle Daten. Die Render-Seite ist Anzeige und Fernbedienung. Die Benachrichtigung
 direkt an den Push-Dienst deines Browsers – das funktioniert also auch, wenn die Render-Seite
 gerade schläft.
 
-Kosten: **0 €** für Render und GitHub. Die Tags vergibt Claude über die Anthropic-API – die kostet
-pro Anfrage ein wenig (siehe „Tags per KI“). Ohne API-Schlüssel läuft alles, nur ohne Tags.
+Kosten: **0 €** für Render und GitHub. Die Tags vergibt eine KI über ihre API (DeepSeek oder Claude) –
+die kostet pro Anfrage ein wenig (siehe „Tags per KI“). Ohne API-Schlüssel läuft alles, nur ohne Tags.
 Discord ist optional.
 
 ---
@@ -44,16 +44,19 @@ Discord ist optional.
 3. **Quellen und Tags:** Beim ersten Start legt der Bot `bot/quellen.csv` und `bot/tags.csv` an.
    Am einfachsten trägst du später alles über die Webseite ein (Reiter „Quellen“ und „Tags“).
    Von Hand geht es auch, mit Excel oder einem Texteditor – siehe „Quellen und Tags“ unten.
-4. **Tags per KI (Claude):** Auf [console.anthropic.com](https://console.anthropic.com) ein Konto
-   anlegen, unter **Billing** etwas Guthaben aufladen und unter **API Keys** einen Schlüssel
-   erstellen. In `bot/config.toml` eintragen (Datei anlegen, falls es sie noch nicht gibt):
+4. **Tags per KI:** Bei **DeepSeek** ([platform.deepseek.com](https://platform.deepseek.com)) oder
+   **Claude** ([console.anthropic.com](https://console.anthropic.com)) ein Konto anlegen, etwas
+   Guthaben aufladen und einen API-Schlüssel erstellen. In `bot/config.toml` eintragen (Datei
+   anlegen, falls es sie noch nicht gibt):
    ```toml
    [llm]
-   api_key = "sk-ant-..."
+   api_key = "sk-..."
    ```
-   Der Schlüssel ist geheim wie ein Passwort – `config.toml` wird nie hochgeladen.
+   Welcher Anbieter gemeint ist, erkennt der Bot am Schlüssel (Claude-Schlüssel beginnen mit
+   `sk-ant-`). Für Claude zusätzlich einmal `pip install anthropic`. Der Schlüssel ist geheim wie
+   ein Passwort – `config.toml` wird nie hochgeladen, also nie in eine andere Datei schreiben.
 5. **Probelauf:** `python news_bot.py --test` zeigt nur in der Konsole, was gefunden wird – mit den
-   Tags, die Claude vergeben hat.
+   Tags, die die KI vergeben hat.
 
 ## Teil 2: Webseite auf Render
 
@@ -110,7 +113,7 @@ Ist der PC aus oder unerreichbar, kann GitHub den Bot laufen lassen: alle 30 Min
 1. Im Repository **Settings → Secrets and variables → Actions → New repository secret**:
    - `DASHBOARD_URL` – die Adresse deiner Render-Seite, z. B. `https://newsbot-xxxx.onrender.com`
    - `BOT_TOKEN` – bei Render im Dienst unter **Environment**
-   - `ANTHROPIC_API_KEY` – dein Claude-API-Schlüssel (`sk-ant-...`), damit Tags vergeben werden
+   - `DEEPSEEK_API_KEY` oder `ANTHROPIC_API_KEY` – dein KI-Schlüssel, damit Tags vergeben werden
    - `DISCORD_WEBHOOK` – nur falls du Discord nutzt
 2. **Actions → Newsbot → Run workflow** startet den ersten Lauf sofort. Danach läuft er von selbst.
 3. Auf der Seite auf jedem Gerät **Benachrichtigungen aus- und wieder einschalten** (der Bot in
@@ -191,7 +194,7 @@ Montag;https://orf.at/rss           Österreich;
 Dienstag;https://derstandard.at     KI-Regulierung;AI Act und nationale KI-Gesetze, nicht: KI-Technik
 ```
 
-Die Beschreibung ist freiwillig. Sie hilft Claude, den Tag richtig zu verstehen – z. B. der Pfad im
+Die Beschreibung ist freiwillig. Sie hilft der KI, den Tag richtig zu verstehen – z. B. der Pfad im
 Tag-Baum oder ein Satz, worum es geht und was nicht dazugehört.
 
 **Über die Webseite** (auch unterwegs):
@@ -245,34 +248,41 @@ auf `Tag;Beschreibung` um: Die Tags bleiben, die Schlagwörter fallen weg (Siche
 
 ## Tags per KI
 
-Für jeden neuen Artikel schickt der Bot **Medium, Titel und Vorschautext** an Claude (Anthropic-API),
-zusammen mit deiner Tag-Liste. Claude wählt die passenden Tags aus – nur Tags, die es in `tags.csv`
+Für jeden neuen Artikel schickt der Bot **Medium, Titel und Vorschautext** an die KI (DeepSeek oder
+Claude), zusammen mit deiner Tag-Liste. Die KI wählt die passenden Tags aus – nur Tags, die es in `tags.csv`
 gibt; erfundene Namen verwirft der Bot. Ein Artikel kann mehrere Tags bekommen (höchstens 8) oder
 keinen, wenn nichts passt.
 
-Die Anweisung an Claude („Prompt“) steht in `bot/ki_tags.py`. Kurz gesagt: Ein Tag passt nur, wenn
+Die Anweisung an die KI („Prompt“) steht in `bot/ki_tags.py`. Kurz gesagt: Ein Tag passt nur, wenn
 der Artikel das Thema wirklich behandelt (eine Erwähnung am Rand reicht nicht); im Tag-Baum zählt der
 spezifischste passende Tag, nicht zusätzlich alle übergeordneten; ein Land passt nur, wenn der
 Artikel von dort handelt – nicht, weil das Medium von dort ist. Texte aus den Artikeln behandelt
-Claude nur als Material, nie als Anweisung.
+die KI nur als Material, nie als Anweisung.
 
 Einstellungen in `config.toml`:
 
 ```toml
 [llm]
-api_key = "sk-ant-..."        # Pflicht – sonst kommen die Artikel ohne Tags
-modell = "claude-opus-5-5"    # freiwillig, das ist der Standard
-effort = "low"                # freiwillig: low, medium oder high – wie gründlich Claude nachdenkt
+api_key = "sk-..."            # Pflicht – sonst kommen die Artikel ohne Tags
+anbieter = "deepseek"         # freiwillig: "deepseek" oder "anthropic" – sonst am Schlüssel erkannt
+modell = "deepseek-v4-flash"  # freiwillig; Standard: deepseek-v4-flash bzw. claude-opus-5-5
+effort = "low"                # freiwillig, nur Claude: low, medium oder high
 ```
 
-Statt in `config.toml` darf der Schlüssel auch in der Umgebungsvariable `ANTHROPIC_API_KEY` stehen.
+Statt in `config.toml` darf der Schlüssel auch in der Umgebungsvariable `DEEPSEEK_API_KEY` bzw.
+`ANTHROPIC_API_KEY` stehen.
 
-- **Kosten:** Die Artikel gehen in Paketen zu 20 an Claude. Die Tag-Liste wird eine Stunde lang
-  zwischengespeichert und kostet bei jeder weiteren Anfrage nur ein Zehntel. Was du tatsächlich
-  verbrauchst, steht in `newsbot.log` („KI-Tags: … Tokens“) und auf console.anthropic.com unter
-  **Usage**. Dort kannst du auch ein Monatslimit setzen. Deutlich günstiger, für Tags meist gut
-  genug: `modell = "claude-haiku-5-5"`.
-- **Klappt die Tag-Vergabe nicht** (Schlüssel falsch, Guthaben leer, Claude nicht erreichbar), steht
+| | DeepSeek | Claude |
+|---|---|---|
+| Preis | sehr günstig | teurer (`claude-haiku-5-5` deutlich günstiger als der Standard) |
+| Antwortform | JSON per Anweisung – der Bot prüft jede Antwort | JSON per Schema erzwungen |
+| Server | China (es gehen nur öffentliche Artikeltitel und -vorschauen hin) | USA |
+| Extra-Paket | keins | `pip install anthropic` |
+
+- **Kosten:** Die Artikel gehen in Paketen zu 20 hinaus. Die Tag-Liste wird zwischengespeichert
+  und kostet bei weiteren Anfragen nur einen Bruchteil. Was du tatsächlich verbrauchst, steht in
+  `newsbot.log` („KI-Tags: … Tokens“) und auf der Seite des Anbieters.
+- **Klappt die Tag-Vergabe nicht** (Schlüssel falsch, Guthaben leer, KI nicht erreichbar), steht
   das im Reiter „Fehler“. Die Artikel werden dann ohne Tags gemeldet – auch bei `nur_mit_tags = true`,
   damit nichts verloren geht.
 - Die Tags gelten ab der nächsten Prüfung; bereits gemeldete Artikel behalten ihre Tags.
@@ -330,7 +340,7 @@ Seite. Gibt es für das Ressort einen eigenen Feed, trag besser den ein.
 | `bot/news_bot.py` | der Bot |
 | `bot/webpush.py` | verschickt die Browser-Benachrichtigungen |
 | `bot/listen.py` | liest, prüft und ändert `quellen.csv` und `tags.csv` |
-| `bot/ki_tags.py` | Tags per KI: Prompt und Anbindung an die Claude-API |
+| `bot/ki_tags.py` | Tags per KI: Prompt und Anbindung an DeepSeek bzw. Claude |
 | `bot/seiten.py` | Seiten ohne Feed: Sitemaps, Angaben aus Artikelseiten, Links der Startseite |
 | `bot/config.toml` | alle Einstellungen |
 | `bot/quellen.csv` | deine Quellen nach Wochentag (entsteht automatisch) |
