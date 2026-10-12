@@ -1,0 +1,14 @@
+{
+  "Cyber": [
+    "cyber*", "hacker*", "ransomware", "phishing", "malware", "schadsoftware", "trojaner*",
+    "botnetz*", "ddos", "datenleck*", "sicherheitslücke*", "zero-day", "darknet", "spyware", "it-sicherheit"
+  ],
+  "KriMiSi": [
+    "krieg*", "militär*", "bundesheer*", "bundeswehr*", "nato", "armee*", "soldat*", "verteidigung*",
+    "terror*", "anschlag*", "krise*", "zivilschutz*", "katastrophenschutz*", "sanktion*", "geheimdienst*", "spionage*"
+  ],
+  "InnoTech": [
+    "innovation*", "technologie*", "künstliche intelligenz", "KI", "chatgpt", "openai", "sprachmodell*",
+    "roboter*", "robotik", "quanten*", "halbleiter*", "mikrochip*", "start-up*", "startup*", "selbstfahrend*"
+  ]
+}

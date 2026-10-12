@@ -1,0 +1,22 @@
+{
+  "quelle": "Tag-Baum (HTML-Ausschnitt), 1:1 übernommen",
+  "hinweis": "Zugeklappte Gruppen (Cyber, KriMiSi, InnoTech, Allgemeine Tags, Newsinfo, Auftragstags) zeigen ihre Unter-Tags im HTML nicht – die fehlen hier. Beschreibungen sind im HTML abgeschnitten.",
+  "tags": [
+    {
+      "name": "Struktur",
+      "beschreibung": "NUR EINEN! UID",
+      "farbe": "rgb(255, 255, 255)",
+      "kinder": [
+        { "name": "[S]1 Cyber" },
+        { "name": "[S]2 KriMiSi" },
+        { "name": "[S]3 InnoTech" }
+      ]
+    },
+    { "name": "Cyber", "beschreibung": "Auf Datenebene ve…", "farbe": "rgb(134, 199, 243)", "kinder": null },
+    { "name": "KriMiSi", "beschreibung": "Krisen, Militär…", "farbe": "rgb(161, 255, 181)", "kinder": null },
+    { "name": "InnoTech", "beschreibung": "Innovation und…", "farbe": "rgb(255, 210, 140)", "kinder": null },
+    { "name": "Allgemeine Tags", "beschreibung": "Tags zu…", "farbe": "rgb(192, 192, 192)", "kinder": null },
+    { "name": "Newsinfo", "beschreibung": "Metadaten bezü…", "farbe": "rgb(255, 255, 255)", "kinder": null },
+    { "name": "Auftragstags", "beschreibung": "Auftragsta…", "farbe": "rgb(255, 255, 255)", "kinder": null }
+  ]
+}
