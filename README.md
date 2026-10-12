@@ -261,11 +261,14 @@ Regeln für die Tags (Prompt in `bot/ki_tags.py`):
   diese zur Auswahl (mit ihrem Pfad als Erklärung); schickt sie trotzdem einen Ober-Tag, wirft der
   Bot ihn weg. Welche Tags unten liegen, erkennt der Bot am Pfad in der Beschreibung – deshalb den
   Tag-Baum mit Pfad importieren (`tags-import/tags.csv`).
-- **So viele belegte Tags wie möglich** – typisch 15–40 pro Artikel (höchstens 40). Die KI geht jeden
+- **Die wichtigsten belegten Tags** – 15 bis höchstens 25 pro Artikel, nach Wichtigkeit sortiert. Die KI geht jeden
   Artikel mit elf Blickwinkeln durch: wer, was, wie (Technik), wo, warum (Politik/Recht),
   Infrastruktur, Gesellschaft/Wirtschaft, Fahrzeuge, Information/Dokument, Zukunftstechnik,
   Krisenarten. Jeder Tag muss sich auf Titel oder Vorschau stützen; eindeutig Erschlossenes ist
   erlaubt, Geratenes nicht. Vor der Antwort prüft sie still eine Checkliste.
+- **Beleg zu jedem Tag:** Die KI gibt zu jedem Tag an, warum er passt – ein kurzes Zitat aus Titel oder
+  Vorschau oder eine knappe Begründung. Zu sehen in der Pfad-Karte (gedrückt halten bzw. Rechtsklick
+  auf den Tag) unter „Warum dieser Tag?“ und am PC beim Darüberfahren mit der Maus.
 - **Pflicht für jeden Artikel:** `[S]1 Cyber` (Struktur; zusätzlich `[S]2 KriMiSi` bei Krisen-,
   Militär- und Sicherheitsthemen, `[S]3 InnoTech` bei Innovation und Forschung), ein Tag aus *Newsinfo > Dokumententyp*
   (meist „News“), aus *zeitlicher Aspekt* (z. B. „2026-2030“), aus *geographische Lokationen* (jedes
@@ -310,7 +313,7 @@ Statt in `config.toml` darf der Schlüssel auch in der Umgebungsvariable `DEEPSE
   Tipp: Wo es eine eigene Rubrik gibt, trag besser die ein (z. B.
   `https://www.theguardian.com/uk/technology` statt `https://www.theguardian.com/`) – weniger
   Artikel, weniger Kosten.
-- **Kosten:** Die Artikel gehen in Paketen zu 6 hinaus. Die Tag-Liste wird zwischengespeichert
+- **Kosten:** Die Artikel gehen in Paketen zu 5 hinaus. Die Tag-Liste wird zwischengespeichert
   und kostet bei weiteren Anfragen nur einen Bruchteil. Was du tatsächlich verbrauchst, steht in
   `newsbot.log` („KI-Tags: … Tokens“) und auf der Seite des Anbieters.
 - **Klappt die Tag-Vergabe nicht** (Schlüssel falsch, Guthaben leer, KI nicht erreichbar), steht
@@ -345,10 +348,11 @@ Seite. Gibt es für das Ressort einen eigenen Feed, trag besser den ein.
 ## Gut zu wissen
 
 - **Neu anfangen:** Bot beenden, dann im Ordner `bot`: `python news_bot.py --zuruecksetzen`. Er
-  vergisst alle gesehenen Artikel, den Verlauf und die Fehler. Quellen, Tags, `config.toml`, die
-  Geräte für Benachrichtigungen und Pause/Intervall bleiben. Der alte Stand liegt danach in
-  `state.vorher.json`. Beim nächsten Start übernimmt die Seite automatisch den leeren Stand; Artikel
-  der letzten 24 Stunden (bzw. des eingestellten Höchstalters) gelten dann wieder als neu.
+  vergisst alle **noch nicht angeschauten** Artikel und die Fehler. **Abgehakte Artikel bleiben** (und
+  kommen auch nicht als neu wieder), ebenso Quellen, Tags, `config.toml`, die Geräte für
+  Benachrichtigungen und Pause/Intervall. Der alte Stand liegt danach in
+  `state.vorher.json`. Beim nächsten Start übernimmt die Seite automatisch den neuen Stand; nicht
+  angeschaute Artikel der letzten 24 Stunden (bzw. des Höchstalters) kommen dann neu getaggt wieder.
   `vapid_privat.pem` **nie** löschen (siehe unten).
 
 - **Aufwachen dauert:** War der PC aus, schläft die Seite; der erste Aufruf dauert dann etwa eine

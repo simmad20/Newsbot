@@ -10,7 +10,7 @@ Aufruf:
     python news_bot.py            # läuft dauerhaft (empfohlen, mit Dashboard)
     python news_bot.py --einmal   # genau ein Durchlauf (z. B. für die Aufgabenplanung)
     python news_bot.py --test     # ein Durchlauf, nur Ausgabe in der Konsole, nichts senden/speichern
-    python news_bot.py --zuruecksetzen  # gesehene Artikel und Verlauf vergessen (Quellen, Tags, Geräte bleiben)
+    python news_bot.py --zuruecksetzen  # nicht angeschaute Artikel vergessen (Abgehakte, Quellen, Tags, Geräte bleiben)
 """
 from __future__ import annotations
 
@@ -599,7 +599,7 @@ def vergib_tags(cfg: dict, state: dict, artikel: list[dict], tags: dict[str, str
     llm = ki_tags.einstellungen(cfg)
     zu_tun = bool(tags) or bool(llm["thema"])  # ohne Tags und ohne Themenfilter gibt es nichts zu entscheiden
     for a in artikel:
-        a["relevant"], a["tags"], a["tags_offen"] = True, [], zu_tun
+        a["relevant"], a["tags"], a["belege"], a["tags_offen"] = True, [], {}, zu_tun
     if not zu_tun or not artikel:
         return
     try:
@@ -778,7 +778,8 @@ def merke_fuer_dashboard(state: dict, a: dict, gemeldet: bool) -> None:
     eintrag = {
         "url": a["url"], "titel": a["titel"][:300], "medium": a["medium"][:200], "teaser": a["teaser"][:1200],
         "autor": a["autor"][:200], "datum": a["datum"].isoformat() if a["datum"] else None,
-        "datum_art": a["datum_art"], "tags": [t[:80] for t in a["tags"][:40]], "gemeldet": gemeldet, "angeschaut": False,
+        "datum_art": a["datum_art"], "tags": [t[:80] for t in a["tags"][:30]], "gemeldet": gemeldet, "angeschaut": False,
+        "belege": {t[:80]: b[:200] for t, b in (a.get("belege") or {}).items() if t in a["tags"][:30] and b},
         "weg": a.get("weg", "feed"),
         "gefunden_um": jetzt_utc().isoformat(),
     }
@@ -1214,7 +1215,8 @@ def hole_lock() -> bool:
 
 def zuruecksetzen() -> None:
     """Neuanfang ohne Datenverlust: quellen.csv, tags.csv, config.toml und vapid_privat.pem bleiben unberührt,
-    aus state.json bleiben die Geräte für Benachrichtigungen, Pause/Intervall/Höchstalter und die gefundenen Wege."""
+    aus state.json bleiben die Geräte für Benachrichtigungen, Pause/Intervall/Höchstalter, die gefundenen Wege
+    und alle abgehakten (angeschauten) Artikel. Vergessen werden nur die noch nicht angeschauten."""
     if not hole_lock():
         sys.exit("Der Bot läuft gerade – erst beenden, dann zurücksetzen.")
     alt = lade_state()
@@ -1225,10 +1227,15 @@ def zuruecksetzen() -> None:
     neu = lade_state()  # leerer Stand
     for k in ("push_abos", "feeds", "pausiert", "intervall_minuten", "max_alter_stunden", "config_stand"):
         neu[k] = alt[k]
+    # Abgehakte Artikel bleiben – samt „gesehen“, damit sie nicht als neu wiederkommen
+    neu["verlauf"] = [e for e in alt["verlauf"] if e.get("angeschaut")]
+    behalten = {e["url"] for e in neu["verlauf"]}
+    neu["gesehen"] = {k: v for k, v in alt["gesehen"].items() if k in behalten}
     speichere_state(neu)
-    log.info("Zurückgesetzt: %d gesehene Artikel und %d Einträge im Verlauf vergessen; %d Gerät(e) für "
-             "Benachrichtigungen behalten. Beim nächsten Start übernimmt die Webseite den leeren Stand.",
-             len(alt["gesehen"]), len(alt["verlauf"]), len(alt["push_abos"]))
+    log.info("Zurückgesetzt: %d nicht angeschaute Artikel vergessen (sie können bei der nächsten Prüfung neu "
+             "kommen), %d abgehakte behalten; %d Gerät(e) für Benachrichtigungen behalten. Beim nächsten Start "
+             "übernimmt die Webseite den neuen Stand.",
+             len(alt["verlauf"]) - len(neu["verlauf"]), len(neu["verlauf"]), len(alt["push_abos"]))
 
 
 def main() -> None:
@@ -1237,7 +1244,8 @@ def main() -> None:
     gruppe.add_argument("--einmal", action="store_true", help="genau ein Durchlauf")
     gruppe.add_argument("--test", action="store_true", help="ein Durchlauf, nichts senden oder speichern")
     gruppe.add_argument("--zuruecksetzen", action="store_true",
-                        help="gesehene Artikel, Verlauf und Fehler vergessen – Quellen, Tags, Geräte und Einstellungen bleiben")
+                        help="nicht angeschaute Artikel und Fehler vergessen – abgehakte Artikel, Quellen, Tags, Geräte "
+                             "und Einstellungen bleiben")
     args = parser.parse_args()
     richte_logging_ein()
     if args.zuruecksetzen:

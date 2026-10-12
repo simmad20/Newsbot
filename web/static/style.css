@@ -559,6 +559,20 @@ input::placeholder { color: var(--leise); }
 .pfad-stufe.ziel.wurzel .pfad-name { margin-left: 0; }
 
 .tag-pfad-notiz { font-size: 13px; color: var(--leise); }
+.tag-beleg {
+  position: relative;
+  padding: 10px 14px 11px 16px;
+  border-radius: 10px;
+  background: linear-gradient(90deg, rgba(245, 165, 36, 0.10), rgba(245, 165, 36, 0.03));
+  box-shadow: inset 3px 0 0 var(--akzent);
+}
+.tag-beleg-titel { font-size: 11px; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase; color: var(--akzent); }
+.tag-beleg-text { margin-top: 4px; font-size: 14.5px; line-height: 1.45; color: var(--text-hell); overflow-wrap: anywhere; }
+.tag-beleg:not(.ergaenzt):not(.leer) .tag-beleg-text::before { content: "„"; color: var(--akzent); }
+.tag-beleg:not(.ergaenzt):not(.leer) .tag-beleg-text::after { content: "“"; color: var(--akzent); }
+.tag-beleg.ergaenzt, .tag-beleg.leer { background: rgba(0, 0, 0, 0.18); box-shadow: inset 3px 0 0 var(--grau); }
+.tag-beleg.ergaenzt .tag-beleg-titel, .tag-beleg.leer .tag-beleg-titel { color: var(--leise); }
+.tag-beleg.ergaenzt .tag-beleg-text, .tag-beleg.leer .tag-beleg-text { font-size: 13px; color: var(--sekundaer); }
 .tag-kopiert:empty { display: none; }
 .tag-kopiert {
   display: flex;

@@ -457,7 +457,7 @@ function artikelKarte(a, kompakt) {
         a.weg && a.weg !== "feed" ? el("span", { class: "leise" }, ` · über ${WEG_TEXT[a.weg] || a.weg}`) : null),
       ...detailFeld("Benachrichtigung", benachrichtigung),
       ...detailFeld("Tags", a.tags.length
-        ? el("ul", { class: "tags" }, ...a.tags.map((t) => el("li", {}, tagKnopf(t, a.url, "d"))))
+        ? el("ul", { class: "tags" }, ...a.tags.map((t) => el("li", {}, tagKnopf(t, a, "d"))))
         : el("span", { class: "leise" }, "keine"))),
     el("div", { class: "zusammenfassung" },
       el("h4", {}, "Zusammenfassung laut Feed"),
@@ -485,7 +485,7 @@ function artikelKarte(a, kompakt) {
       meta.length ? el("p", { class: "artikel-meta" }, meta.join(" · ")) : null,
       a.teaser && !offen ? el("p", { class: "teaser" }, a.teaser) : null,
       el("div", { class: "artikel-fuss" },
-        a.tags.length && !offen ? el("ul", { class: "tags", "aria-label": "Tags" }, ...a.tags.slice(0, 6).map((t) => el("li", {}, tagKnopf(t, a.url, "k"))),
+        a.tags.length && !offen ? el("ul", { class: "tags", "aria-label": "Tags" }, ...a.tags.slice(0, 6).map((t) => el("li", {}, tagKnopf(t, a, "k"))),
           a.tags.length > 6 ? el("li", { class: "tags-mehr", title: "Alle Tags unter „Details“" }, `+${a.tags.length - 6}`) : null) : null,
         abhaken,
         el("button", knopfAttr, offen ? "Weniger" : "Details", symbol(ICON.pfeil, 16))),
@@ -551,10 +551,11 @@ async function kopiereText(text) {
 
 // ---------------------------------------------------------------- Tag-Pfad: wo liegt ein Tag im Tag-Baum?
 
-function tagKnopf(name, url, wo) {
-  return el("button", { type: "button", class: "tag-knopf", "data-tag-pfad": name,
-    title: "Antippen: kopieren · Gedrückt halten, Rechtsklick oder Umschalt+Klick: Pfad im Tag-Baum",
-    "data-fokus": `t|${wo}|${url}|${name}` }, name);
+function tagKnopf(name, artikel, wo) {
+  const beleg = artikel.belege?.[name];
+  return el("button", { type: "button", class: "tag-knopf", "data-tag-pfad": name, "data-url": artikel.url,
+    title: `${beleg ? `Warum: ${beleg}\n` : ""}Antippen: kopieren · Gedrückt halten, Rechtsklick oder Umschalt+Klick: Pfad und Beleg`,
+    "data-fokus": `t|${wo}|${artikel.url}|${name}` }, name);
 }
 
 // ---- Antippen kopiert, Gedrückthalten / Rechtsklick / Umschalt+Klick zeigt den Pfad, Strg+C über einem Tag kopiert
@@ -661,6 +662,8 @@ function zeigeTagPfad(knopf) {
   const { pfade, notiz, bekannt } = tagPfade(name);
   const dialog = $("tag-pfad");
   const treffer = daten.artikel.filter((a) => a.tags.includes(name)).length;
+  const beleg = daten.artikel.find((a) => a.url === knopf.dataset.url)?.belege?.[name] || "";
+  const ergaenzt = beleg.startsWith("vom Bot ergänzt");
   const tiefe = Math.max(...pfade.map((p) => p.length));
 
   const baum = (pfad) => el("ol", { class: "pfad-baum" }, ...pfad.map((stufe, i) => {
@@ -684,6 +687,11 @@ function zeigeTagPfad(knopf) {
         el("h2", { id: "tag-pfad-name" }, name)),
       el("button", { type: "button", class: "symbol-knopf", "data-schliessen": "", "aria-label": "Schließen" }, symbol(ICON.x))),
     el("p", { class: "tag-kopiert", role: "status", "aria-live": "polite" }),
+    el("section", { class: `tag-beleg${ergaenzt ? " ergaenzt" : ""}${beleg ? "" : " leer"}`, "aria-label": "Warum dieser Tag" },
+      el("p", { class: "tag-beleg-titel" }, "Warum dieser Tag?"),
+      el("p", { class: "tag-beleg-text" }, beleg
+        ? (ergaenzt ? "Pflicht-Tag – die KI hatte aus diesem Bereich keinen gewählt, deshalb hat der Bot ihn ergänzt." : beleg)
+        : "Kein Beleg gespeichert – der Artikel wurde vor dieser Funktion getaggt.")),
     pfade.length === 1 && pfade[0].length > 1 ? el("p", { class: "tag-pfad-weg", "aria-hidden": "true" },
       ...pfade[0].flatMap((stufe, i) => [i ? el("span", { class: "pfeil" }, "→") : null, el("span", {}, stufe)])) : null,
     ...pfade.map((pfad, n) => el("section", { class: "pfad-block", "aria-label": pfade.length > 1 ? `Pfad ${n + 1}` : "Pfad" },

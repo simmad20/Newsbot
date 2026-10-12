@@ -129,6 +129,12 @@ Beschreibung = Annotated[str, Field(max_length=1000), AfterValidator(_beschreibu
 Kurz = Annotated[str, Field(max_length=300)]
 
 
+def _hoechstens_50(belege: dict) -> dict:
+    if len(belege) > 50:
+        raise ValueError("zu viele Belege")
+    return belege
+
+
 class ArtikelIn(BaseModel):
     url: str = Field(max_length=2000, pattern=r"^https?://")
     titel: str = Field(max_length=300)
@@ -138,6 +144,8 @@ class ArtikelIn(BaseModel):
     datum: Optional[str] = Field(None, max_length=40)
     datum_art: str = Field("", max_length=20)
     tags: list[Annotated[str, Field(max_length=80)]] = Field(default_factory=list, max_length=50)
+    belege: Annotated[dict[Annotated[str, Field(max_length=80)], Annotated[str, Field(max_length=200)]],
+                      AfterValidator(_hoechstens_50)] = Field(default_factory=dict)  # Tag → warum (Zitat/Begründung)
     gemeldet: bool = False
     angeschaut: bool = False
     gefunden_um: str = Field(max_length=40)
