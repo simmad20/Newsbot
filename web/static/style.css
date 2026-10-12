@@ -402,6 +402,27 @@ input::placeholder { color: var(--leise); }
   cursor: pointer;
 }
 .details-knopf:hover { background: var(--chip); color: var(--text-hell); }
+.abhaken {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  min-height: 32px;
+  padding: 0 10px 0 8px;
+  border: 1px solid var(--linie);
+  border-radius: 6px;
+  background: none;
+  color: var(--sekundaer);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.abhaken:hover { border-color: var(--gruen); color: var(--gruen-text); }
+.abhaken.an { border-color: rgba(76, 195, 138, 0.4); background: rgba(76, 195, 138, 0.14); color: var(--gruen-text); }
+.abhaken + .details-knopf { margin-left: 0; }
+.artikel.angeschaut:not(.offen) .artikel-titel { opacity: 0.7; }
+.anzahl-zeile { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; }
+#artikel-rueck .link-knopf { margin-left: 4px; }
 .details-knopf svg { transition: transform 0.15s; }
 .details-knopf[aria-expanded="true"] svg { transform: rotate(180deg); }
 

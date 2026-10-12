@@ -256,6 +256,7 @@ const ANSICHT_SCHLUESSEL = "newsbot_artikel_ansicht";
 let ansicht = (() => { try { return localStorage.getItem(ANSICHT_SCHLUESSEL) === "quelle" ? "quelle" : "zeit"; } catch { return "zeit"; } })();
 let farbeVon = new Map();          // Medium → Farbnummer, damit jede Quelle überall gleich aussieht
 const offeneArtikel = new Set();   // aufgeklappte Details bleiben beim Aktualisieren offen
+const abhakenLokal = new Map();    // url → angeschaut: gilt sofort, bis der Server denselben Stand meldet
 let letzteArtikelAnsicht = "";
 
 const WEG_TEXT = { feed: "RSS-Feed", news_sitemap: "News-Sitemap", sitemap: "Sitemap", startseite: "Startseite (Seite ohne Feed)" };
@@ -295,13 +296,16 @@ function fuelleAuswahl(auswahl, leerText, werte) {
 }
 
 const zeitpunkt = (a) => Date.parse(a.datum || a.gefunden_um) || 0;
+const istAngeschaut = (a) => (abhakenLokal.has(a.url) ? abhakenLokal.get(a.url) : Boolean(a.angeschaut));
 
 function gefilterteArtikel() {
   const suche = $("suche").value.trim().toLowerCase();
   const tag = $("filter-tag").value;
   const medium = $("filter-medium").value;
   const nurGemeldet = $("nur-gemeldet").checked;
+  const gelesen = $("filter-gelesen").value;
   return [...daten.artikel].sort((x, y) => zeitpunkt(y) - zeitpunkt(x)).filter((a) =>
+    (!gelesen || (gelesen === "angeschaut") === istAngeschaut(a)) &&
     (!tag || a.tags.includes(tag)) &&
     (!medium || a.medium === medium) &&
     (!nurGemeldet || a.gemeldet) &&
@@ -331,19 +335,27 @@ function zeichneMedienLeiste() {
 function zeichneTicker() {
   const liste = $("ticker");
   const mehr = $("mehr");
+  for (const [url, wert] of abhakenLokal) {  // Server hat den Haken übernommen → lokale Vorgabe nicht mehr nötig
+    if (daten.artikel.some((a) => a.url === url && Boolean(a.angeschaut) === wert)) abhakenLokal.delete(url);
+  }
   const artikel = gefilterteArtikel();
   const gesamt = daten.artikel.length;
   const neuZahl = daten.artikel.filter(istNeu).length;
+  const offenZahl = daten.artikel.filter((a) => !istAngeschaut(a)).length;
+  const gelesen = $("filter-gelesen").value;
 
-  $("zahl-artikel").textContent = gesamt ? String(gesamt) : "";
+  $("zahl-artikel").textContent = offenZahl ? String(offenZahl) : "";
   document.title = neuZahl ? `(${neuZahl}) News-Bot` : "News-Bot";
   $("anzahl").textContent = !gesamt ? ""
-    : artikel.length === gesamt ? `${gesamt} Artikel${neuZahl ? `, davon ${neuZahl} neu seit deinem letzten Besuch` : ""}`
-    : `${artikel.length} von ${gesamt} Artikeln passen zu den Filtern`;
+    : `${artikel.length} von ${gesamt} Artikeln angezeigt · ${offenZahl} nicht angeschaut`
+      + (neuZahl ? ` · ${neuZahl} neu seit deinem letzten Besuch` : "");
+  const alleKnopf = $("alle-abhaken");
+  alleKnopf.hidden = gelesen !== "offen" || !artikel.length;
+  alleKnopf.textContent = `Alle ${artikel.length} als angeschaut markieren`;
   document.querySelectorAll("[data-ansicht]").forEach((k) => k.setAttribute("aria-pressed", String(k.dataset.ansicht === ansicht)));
 
   // Nur neu zeichnen, wenn sich etwas geändert hat (sonst springen Fokus und Auswahl alle 10 Sekunden)
-  const schluessel = JSON.stringify([daten.artikel.map((a) => [a.url, a.gemeldet, a.tags]), artikel.length, sichtbar, ansicht, gesehenBis,
+  const schluessel = JSON.stringify([daten.artikel.map((a) => [a.url, a.gemeldet, a.tags, istAngeschaut(a)]), artikel.length, sichtbar, ansicht, gesehenBis, gelesen,
     $("filter-medium").value, [...offeneArtikel], fmtTagSchluessel.format(new Date()), Math.floor(Date.now() / 60000),
     daten.bot.status ? [daten.bot.status.quellen_heute, daten.bot.status.nur_mit_tags] : null,
     $("suche").value, $("filter-tag").value, $("nur-gemeldet").checked]);
@@ -353,7 +365,8 @@ function zeichneTicker() {
   zeichneMedienLeiste();
   mehr.hidden = true;
   if (!gesamt || !artikel.length) {
-    const text = gesamt ? "Kein Artikel passt zu diesen Filtern."
+    const text = gesamt && gelesen === "offen" && !offenZahl ? "Alles angeschaut – neue Artikel erscheinen hier, sobald der Bot sie findet."
+      : gesamt ? "Kein Artikel passt zu diesen Filtern."
       : !daten.bot.status ? "Sobald der Bot verbunden ist, erscheinen hier die gefundenen Artikel."
       : daten.bot.status.quellen_heute ? "Noch keine Artikel. Mit „Jetzt prüfen“ startest du sofort eine Prüfung."
       : "Noch keine Artikel. Für heute sind keine Quellen eingetragen – im Reiter „Quellen“ kannst du welche hinzufügen.";
@@ -454,10 +467,15 @@ function artikelKarte(a, kompakt) {
         el("span", {}, "Artikel öffnen"), symbol(ICON.extern, 16)),
       el("button", { type: "button", class: "knopf", "data-kopieren": url, "data-fokus": `k|${a.url}` }, "Link kopieren")) : null) : null;
 
+  const angeschaut = istAngeschaut(a);
+  const abhaken = el("button", { type: "button", class: `abhaken${angeschaut ? " an" : ""}`, "aria-pressed": String(angeschaut),
+    title: angeschaut ? "Wieder als nicht angeschaut markieren" : "Als angeschaut markieren – dann ist er unter „Nicht angeschaut“ ausgeblendet",
+    "data-abhaken": a.url, "data-fokus": `h|${a.url}` }, symbol(ICON.haken, 16), el("span", {}, angeschaut ? "Angeschaut" : "Abhaken"));
+
   const knopfAttr = { type: "button", class: "details-knopf", "aria-expanded": String(offen), "data-details": a.url, "data-fokus": `d|${a.url}` };
   if (offen) knopfAttr["aria-controls"] = id;
 
-  return el("li", { class: `artikel farbe-${farbeVon.get(a.medium) ?? 0}${offen ? " offen" : ""}${istNeu(a) ? " ist-neu" : ""}` },
+  return el("li", { class: `artikel farbe-${farbeVon.get(a.medium) ?? 0}${offen ? " offen" : ""}${istNeu(a) ? " ist-neu" : ""}${angeschaut ? " angeschaut" : ""}` },
     zeit,
     el("div", { class: "artikel-inhalt" },
       marken.childElementCount ? marken : null,
@@ -467,6 +485,7 @@ function artikelKarte(a, kompakt) {
       el("div", { class: "artikel-fuss" },
         a.tags.length && !offen ? el("ul", { class: "tags", "aria-label": "Tags" }, ...a.tags.slice(0, 6).map((t) => el("li", {}, t)),
           a.tags.length > 6 ? el("li", { class: "tags-mehr", title: "Alle Tags unter „Details“" }, `+${a.tags.length - 6}`) : null) : null,
+        abhaken,
         el("button", knopfAttr, offen ? "Weniger" : "Details", symbol(ICON.pfeil, 16))),
       details));
 }
@@ -476,7 +495,49 @@ $("mehr").addEventListener("click", () => {
   zeichneTicker();
 });
 
+/** Abhaken (oder zurücknehmen): sofort sichtbar, dann an Server und Bot. Bei Fehler wieder zurück. */
+async function setzeAngeschaut(urls, wert, text) {
+  const rueck = $("artikel-rueck");
+  for (const u of urls) abhakenLokal.set(u, wert);
+  zeichneTicker();
+  try {
+    for (let i = 0; i < urls.length; i += 400) {
+      await schickeBefehl({ aktion: "angeschaut", artikel: urls.slice(i, i + 400), angeschaut: wert });
+    }
+    rueck.replaceChildren(text, " ",
+      el("button", { type: "button", class: "link-knopf", "data-rueckgaengig": wert ? "1" : "0", "data-urls": JSON.stringify(urls) }, "Rückgängig"));
+    laden();
+  } catch (e) {
+    for (const u of urls) abhakenLokal.delete(u);
+    zeichneTicker();
+    rueck.textContent = `Nicht gespeichert: ${e.message}`;
+  }
+}
+
+$("artikel-rueck").addEventListener("click", (e) => {
+  const knopf = e.target.closest("button[data-rueckgaengig]");
+  if (!knopf) return;
+  const urls = JSON.parse(knopf.dataset.urls);
+  setzeAngeschaut(urls, knopf.dataset.rueckgaengig !== "1", "Zurückgenommen.");
+});
+
+$("alle-abhaken").addEventListener("click", () => {
+  const urls = gefilterteArtikel().map((a) => a.url);
+  if (urls.length && confirm(`${anzahl(urls.length, "Artikel", "Artikel")} als angeschaut markieren?`)) {
+    setzeAngeschaut(urls, true, `${anzahl(urls.length, "Artikel", "Artikel")} abgehakt.`);
+  }
+});
+
 $("ticker").addEventListener("click", async (e) => {
+  const haken = e.target.closest("button[data-abhaken]");
+  if (haken) {
+    const a = daten.artikel.find((x) => x.url === haken.dataset.abhaken);
+    if (a) {
+      const wert = !istAngeschaut(a);
+      setzeAngeschaut([a.url], wert, wert ? `Abgehakt: „${a.titel.slice(0, 80)}“` : `Wieder offen: „${a.titel.slice(0, 80)}“`);
+    }
+    return;
+  }
   const details = e.target.closest("button[data-details]");
   if (details) {
     const url = details.dataset.details;
@@ -531,11 +592,11 @@ function zeichneFehler() {
 
 function zeichneBefehle() {
   const liste = $("befehle");
-  if (!daten.befehle.length) {
+  if (!daten.befehle.some((b) => b.aktion !== "angeschaut")) {  // Abhaken steht nicht in der Liste – das wären zu viele
     liste.replaceChildren(el("li", { class: "leise" }, "Noch keine Befehle gesendet."));
     return;
   }
-  liste.replaceChildren(...daten.befehle.map((b) => {
+  liste.replaceChildren(...daten.befehle.filter((b) => b.aktion !== "angeschaut").map((b) => {
     const name = befehlName(b);
     const stand = b.zustand === "erledigt" ? b.ergebnis : ZUSTAND_NAMEN[b.zustand];
     const wann = new Date(b.erstellt * 1000);
@@ -720,7 +781,7 @@ document.addEventListener("visibilitychange", () => {
 });
 
 document.querySelectorAll(".steuerung button[data-aktion]").forEach((k) => k.addEventListener("click", () => sendeBefehl(k)));
-["suche", "filter-tag", "filter-medium", "nur-gemeldet"].forEach((id) =>
+["suche", "filter-tag", "filter-medium", "nur-gemeldet", "filter-gelesen"].forEach((id) =>
   $(id).addEventListener("input", () => {
     if (!daten) return;
     sichtbar = PRO_SEITE;  // neue Filter → wieder oben anfangen

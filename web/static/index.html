@@ -117,6 +117,11 @@
         <input id="suche" type="search" placeholder="Titel und Vorschau durchsuchen">
         <select id="filter-tag" aria-label="Tag"><option value="">Alle Tags</option></select>
         <select id="filter-medium" aria-label="Quelle"><option value="">Alle Quellen</option></select>
+        <select id="filter-gelesen" aria-label="Angeschaut oder nicht">
+          <option value="offen">Nicht angeschaut</option>
+          <option value="angeschaut">Angeschaut</option>
+          <option value="">Alle</option>
+        </select>
         <label class="haken"><input id="nur-gemeldet" type="checkbox"> Nur gemeldete</label>
         <div class="ansicht-wahl" role="group" aria-label="Darstellung">
           <button type="button" data-ansicht="zeit" aria-pressed="true">Zeitleiste</button>
@@ -124,7 +129,11 @@
         </div>
       </div>
       <ul id="medien-leiste" class="medien-leiste" aria-label="Schnellfilter nach Quelle" hidden></ul>
-      <p id="anzahl" class="anzahl leise"></p>
+      <div class="anzahl-zeile">
+        <p id="anzahl" class="anzahl leise"></p>
+        <button type="button" id="alle-abhaken" class="link-knopf" hidden>Alle als angeschaut markieren</button>
+      </div>
+      <p id="artikel-rueck" class="rueckmeldung" role="status" aria-live="polite"></p>
       <div id="ticker" class="ticker"></div>
       <button type="button" id="mehr" class="knopf mehr" hidden>Weitere anzeigen</button>
     </section>

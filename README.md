@@ -149,6 +149,7 @@ Gut zu wissen:
 | Testbenachrichtigung | schickt eine Probe an alle eingeschalteten Geräte (und Discord, falls eingerichtet) |
 | Benachrichtigungen ein/aus | für das Gerät, auf dem du gerade bist |
 | Reiter „Artikel“ | nach Tagen gruppiert, je 30 auf einmal („Weitere anzeigen“); Suche, Filter nach Tag und Medium, „nur gemeldete“; **neu** = seit deinem letzten Besuch |
+| Abhaken | **Abhaken** an einem Artikel = angeschaut; er verschwindet aus „Nicht angeschaut“ (mit „Rückgängig“). Filter: Nicht angeschaut / Angeschaut / Alle; „Alle … als angeschaut markieren“ hakt die ganze gefilterte Liste ab. Gilt auf allen Geräten – der Bot speichert es in `state.json`; die Zahl am Reiter zählt die offenen Artikel |
 | Reiter „Quellen“ | Tabelle: eine Zeile pro Quelle, eine Spalte pro Wochentag – Tag anklicken schaltet ihn ein/aus; Suche, Quellen hinzufügen, Datei importieren |
 | Reiter „Tags“ | Karten: ein Tag pro Karte mit Beschreibung; bearbeiten (Stift) oder löschen; Suche, neuer Tag, Datei importieren (auch der ganze Tag-Baum) |
 | Reiter „Fehler“ / „Befehle“ | welche Quellen nicht gingen, was mit deinen Befehlen passiert ist |

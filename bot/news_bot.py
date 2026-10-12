@@ -75,7 +75,7 @@ WEG_NEU_SUCHEN_STUNDEN = 24      # ohne Feed: einmal am Tag schauen, ob es inzwi
 WEGE = {"feed": "RSS-Feed", "news_sitemap": "News-Sitemap", "sitemap": "Sitemap", "startseite": "Startseite"}
 ERLAUBTE_AKTIONEN = {"jetzt_pruefen", "pausieren", "fortsetzen", "intervall", "max_alter", "testnachricht",
                      "quellen_hinzufuegen", "quellen_entfernen", "tag_hinzufuegen", "tag_entfernen",
-                     "quellen_importieren", "tags_importieren"}
+                     "quellen_importieren", "tags_importieren", "angeschaut"}
 STANDARD_EINSTELLUNGEN = {
     "discord_webhook": "", "discord_webhook_fehler": "",
     "zeitzone": "Europe/Vienna", "max_alter_stunden": 24, "intervall_minuten": 15,
@@ -778,7 +778,7 @@ def merke_fuer_dashboard(state: dict, a: dict, gemeldet: bool) -> None:
     eintrag = {
         "url": a["url"], "titel": a["titel"][:300], "medium": a["medium"][:200], "teaser": a["teaser"][:1200],
         "autor": a["autor"][:200], "datum": a["datum"].isoformat() if a["datum"] else None,
-        "datum_art": a["datum_art"], "tags": [t[:80] for t in a["tags"][:30]], "gemeldet": gemeldet,
+        "datum_art": a["datum_art"], "tags": [t[:80] for t in a["tags"][:30]], "gemeldet": gemeldet, "angeschaut": False,
         "weg": a.get("weg", "feed"),
         "gefunden_um": jetzt_utc().isoformat(),
     }
@@ -1105,6 +1105,17 @@ def fuehre_befehl_aus(b: dict, cfg: dict, state: dict) -> str:
         if versucht:
             teile.append(f"Browser: an {ok} von {versucht} Gerät(en) gesendet")
         return "; ".join(teile) or "kein Benachrichtigungsweg eingerichtet – auf der Seite „Benachrichtigungen einschalten“"
+    if aktion == "angeschaut":
+        urls, wert = b.get("artikel"), b.get("angeschaut")
+        if not isinstance(urls, list) or not isinstance(wert, bool):
+            return "ungültige Angaben – ignoriert"
+        ziel = {u for u in urls[:1000] if isinstance(u, str)}
+        n = 0
+        for eintrag in state["verlauf"]:
+            if eintrag["url"] in ziel and eintrag.get("angeschaut", False) != wert:
+                eintrag["angeschaut"] = wert
+                n += 1
+        return f"{n} Artikel als {'angeschaut' if wert else 'nicht angeschaut'} markiert"
     # Quellen und Tags: listen.py prüft jeden Wert selbst, bevor etwas in eine Datei geschrieben wird.
     try:
         if aktion in ("quellen_hinzufuegen", "quellen_entfernen", "quellen_importieren"):

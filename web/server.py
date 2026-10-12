@@ -139,6 +139,7 @@ class ArtikelIn(BaseModel):
     datum_art: str = Field("", max_length=20)
     tags: list[Annotated[str, Field(max_length=80)]] = Field(default_factory=list, max_length=30)
     gemeldet: bool = False
+    angeschaut: bool = False
     gefunden_um: str = Field(max_length=40)
     weg: Literal["", "feed", "news_sitemap", "sitemap", "startseite"] = ""
 
@@ -218,10 +219,11 @@ class SyncIn(BaseModel):
 
 Aktion = Literal["jetzt_pruefen", "pausieren", "fortsetzen", "intervall", "max_alter", "testnachricht",
                  "quellen_hinzufuegen", "quellen_entfernen", "tag_hinzufuegen", "tag_entfernen",
-                 "quellen_importieren", "tags_importieren"]
+                 "quellen_importieren", "tags_importieren", "angeschaut"]
 QUELLEN_AKTIONEN = {"quellen_hinzufuegen", "quellen_entfernen"}
 TAG_AKTIONEN = {"tag_hinzufuegen", "tag_entfernen"}
 LISTEN_AKTIONEN = QUELLEN_AKTIONEN | TAG_AKTIONEN | {"quellen_importieren", "tags_importieren"}
+MAX_ANGESCHAUT = 400  # so viele Artikel hält der Server höchstens
 
 
 class QuelleImport(BaseModel):
@@ -271,9 +273,14 @@ class BefehlIn(BaseModel):
     beschreibung: Optional[Beschreibung] = None
     quellen: list[QuelleImport] = Field(default_factory=list, max_length=MAX_IMPORT_QUELLEN)
     tags: list[TagImport] = Field(default_factory=list, max_length=MAX_TAGS)
+    artikel: list[Annotated[str, Field(max_length=2000, pattern=r"^https?://")]] = Field(default_factory=list,
+                                                                                       max_length=MAX_ANGESCHAUT)
+    angeschaut: Optional[bool] = None
 
     @model_validator(mode="after")
     def passt_zur_aktion(self) -> "BefehlIn":
+        if self.aktion == "angeschaut" and (not self.artikel or self.angeschaut is None):
+            raise ValueError("Bitte Artikel und angeschaut (ja/nein) angeben.")
         if self.aktion == "intervall" and (self.wert is None or self.wert < 5):
             raise ValueError("Für das Intervall bitte eine Minutenzahl (5–240) angeben.")
         if self.aktion == "max_alter" and (self.wert is None or self.wert > MAX_ALTER_STUNDEN):
@@ -338,7 +345,7 @@ class Speicher:
                 elif b["zustand"] == "offen":
                     b["zustand"] = "abgeholt"
                     abzuholen.append({k: b[k] for k in ("id", "aktion", "wert", "tage", "urls", "tag", "beschreibung",
-                                                        "quellen", "tags")})
+                                                        "quellen", "tags", "artikel", "angeschaut")})
             push, self.push_aenderungen = self.push_aenderungen, []
             return {"befehle": abzuholen, "snapshot_noetig": not self.hat_snapshot, "push_aenderungen": push}
 
@@ -360,6 +367,8 @@ class Speicher:
             self.push_aenderungen = (self.push_aenderungen + [p.model_dump()])[-20:]
 
     def befehl(self, b: BefehlIn) -> dict:
+        if b.aktion == "angeschaut":
+            return self.angeschaut(b)
         with self.lock:
             # Gleiche offene Steuer-Aktion nicht doppelt einreihen – nur den Wert aktualisieren.
             # (Quellen- und Tag-Befehle haben jeweils eigenen Inhalt und bleiben alle erhalten.)
@@ -375,6 +384,34 @@ class Speicher:
                 "ergebnis": "",
                 "erstellt": time.time(),
             }
+            self.befehle.append(neu)
+            self.befehle = self.befehle[-self.MAX_BEFEHLE:]
+            return kompakt(neu)
+
+    def angeschaut(self, b: BefehlIn) -> dict:
+        """Abhaken gilt sofort auf der Seite; der Bot speichert es dauerhaft (state.json), damit es einen
+        Neustart von Render übersteht. Offene Abhak-Befehle werden zusammengefasst, damit viele Klicks
+        bei schlafendem Bot nicht die Befehlsliste füllen und ältere verdrängen."""
+        with self.lock:
+            urls = list(dict.fromkeys(b.artikel))
+            for url in urls:
+                if url in self.artikel:
+                    self.artikel[url]["angeschaut"] = b.angeschaut
+            ziel = None
+            for alt in self.befehle:
+                if alt["zustand"] != "offen" or alt["aktion"] != "angeschaut":
+                    continue
+                if alt["angeschaut"] == b.angeschaut:
+                    ziel = alt
+                else:  # Gegenteil noch nicht abgeholt → einfach streichen
+                    alt["artikel"] = [u for u in alt["artikel"] if u not in urls]
+            self.befehle = [x for x in self.befehle if not (x["aktion"] == "angeschaut" and x["zustand"] == "offen"
+                                                             and not x["artikel"])]
+            if ziel is not None:
+                ziel["artikel"] = list(dict.fromkeys(ziel["artikel"] + urls))[-MAX_ANGESCHAUT:]
+                return kompakt(ziel)
+            neu = {"id": uuid.uuid4().hex[:12], **b.model_dump(), "artikel": urls, "zustand": "offen", "ergebnis": "",
+                   "erstellt": time.time()}
             self.befehle.append(neu)
             self.befehle = self.befehle[-self.MAX_BEFEHLE:]
             return kompakt(neu)
@@ -403,7 +440,9 @@ class Speicher:
 
 def kompakt(b: dict) -> dict:
     """Für die Seite: Datei-Importe nur als Anzahl statt mit allen Einträgen (die Seite fragt alle 10 s ab)."""
-    k = {x: v for x, v in b.items() if x not in ("quellen", "tags")}
+    k = {x: v for x, v in b.items() if x not in ("quellen", "tags", "artikel")}
+    if b.get("artikel"):
+        k["anzahl_artikel"] = len(b["artikel"])
     if b.get("quellen"):
         k["anzahl_quellen"] = len(b["quellen"])
     if b.get("tags"):
