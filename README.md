@@ -267,6 +267,7 @@ api_key = "sk-..."            # Pflicht – sonst kommen die Artikel ohne Tags
 anbieter = "deepseek"         # freiwillig: "deepseek" oder "anthropic" – sonst am Schlüssel erkannt
 modell = "deepseek-v4-flash"  # freiwillig; Standard: deepseek-v4-flash bzw. claude-opus-5-5
 effort = "low"                # freiwillig, nur Claude: low, medium oder high
+thema = "Cyber und Technologie"  # freiwillig – siehe Themenfilter; thema = "" schaltet ihn aus
 ```
 
 Statt in `config.toml` darf der Schlüssel auch in der Umgebungsvariable `DEEPSEEK_API_KEY` bzw.
@@ -279,6 +280,16 @@ Statt in `config.toml` darf der Schlüssel auch in der Umgebungsvariable `DEEPSE
 | Server | China (es gehen nur öffentliche Artikeltitel und -vorschauen hin) | USA |
 | Extra-Paket | keins | `pip install anthropic` |
 
+- **Themenfilter:** Die KI entscheidet zuerst, ob ein Artikel überhaupt zum Thema gehört –
+  Standard ist **Cyber und Technologie** (IT-Sicherheit, Cyberangriffe, Datenschutz, KI, Software,
+  Hardware und Chips, Internet, Telekommunikation, digitale Infrastruktur, Tech-Firmen,
+  Digitalpolitik). Sport, Kultur, allgemeine Politik, Krieg, Wirtschaft usw. werden verworfen –
+  außer das Thema ist darin der Kern (z. B. ein Cyberangriff im Krieg, ein KI-Gesetz). Verworfene
+  Artikel erscheinen nicht auf der Seite und lösen keine Benachrichtigung aus; im Log und in der
+  Statuskarte steht nur „… nicht zum Thema“. Anderes Thema: `thema = "..."` in `config.toml`.
+  Tipp: Wo es eine eigene Rubrik gibt, trag besser die ein (z. B.
+  `https://www.theguardian.com/uk/technology` statt `https://www.theguardian.com/`) – weniger
+  Artikel, weniger Kosten.
 - **Kosten:** Die Artikel gehen in Paketen zu 20 hinaus. Die Tag-Liste wird zwischengespeichert
   und kostet bei weiteren Anfragen nur einen Bruchteil. Was du tatsächlich verbrauchst, steht in
   `newsbot.log` („KI-Tags: … Tokens“) und auf der Seite des Anbieters.
@@ -313,9 +324,12 @@ Seite. Gibt es für das Ressort einen eigenen Feed, trag besser den ein.
 
 ## Gut zu wissen
 
-- **Neu anfangen:** Bot beenden und `bot/state.json` löschen – er vergisst dann alle gesehenen
-  Artikel und den Verlauf. Beim nächsten Start übernimmt die Seite automatisch den leeren Stand.
-  `vapid_privat.pem` dabei **nicht** löschen (siehe unten).
+- **Neu anfangen:** Bot beenden, dann im Ordner `bot`: `python news_bot.py --zuruecksetzen`. Er
+  vergisst alle gesehenen Artikel, den Verlauf und die Fehler. Quellen, Tags, `config.toml`, die
+  Geräte für Benachrichtigungen und Pause/Intervall bleiben. Der alte Stand liegt danach in
+  `state.vorher.json`. Beim nächsten Start übernimmt die Seite automatisch den leeren Stand; Artikel
+  der letzten 24 Stunden (bzw. des eingestellten Höchstalters) gelten dann wieder als neu.
+  `vapid_privat.pem` **nie** löschen (siehe unten).
 
 - **Aufwachen dauert:** War der PC aus, schläft die Seite; der erste Aufruf dauert dann etwa eine
   Minute. Benachrichtigungen sind davon nicht betroffen.
