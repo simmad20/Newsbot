@@ -521,6 +521,24 @@ input::placeholder { color: var(--leise); }
 .pfad-stufe.ziel.wurzel .pfad-name { margin-left: 0; }
 
 .tag-pfad-notiz { font-size: 13px; color: var(--leise); }
+.tag-kopiert:empty { display: none; }
+.tag-kopiert {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 6px;
+  margin-top: -6px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  animation: pfad-auf 0.2s ease-out;
+}
+.tag-kopiert.ok { background: rgba(76, 195, 138, 0.12); color: var(--gruen-text); box-shadow: 0 0 0 1px rgba(76, 195, 138, 0.28) inset; }
+.tag-kopiert.ok strong { color: var(--text-hell); font-weight: 600; }
+.tag-kopiert.ok svg { flex: none; }
+.tag-kopiert.fehler { background: var(--fehler-grund); color: var(--fehler); }
+.tag-pfad-knoepfe { display: flex; gap: 8px; }
+.kopier-feld { position: fixed; top: 0; left: 0; width: 1px; height: 1px; opacity: 0; }
 .tag-pfad-fuss { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding-top: 12px; border-top: 1px solid var(--linie); }
 .tag-pfad-info { font-size: 12.5px; color: var(--leise); }
 .tag-pfad-fuss .knopf { min-height: 36px; padding: 0 12px; font-size: 13px; }
@@ -949,6 +967,7 @@ textarea { resize: vertical; line-height: 1.5; }
   .tag-pfad-inhalt { padding: 10px 18px calc(18px + env(safe-area-inset-bottom)); }
   .tag-pfad-griff { display: block; align-self: center; width: 38px; height: 4px; border-radius: 4px; background: var(--rand); }
   .pfad-stufe { --einzug: 18px; min-height: 38px; }
+  .tag-pfad-knoepfe { flex: 1 1 100%; }
   .tag-pfad-fuss .knopf { flex: 1; justify-content: center; min-height: 44px; }
 }
 

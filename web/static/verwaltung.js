@@ -35,6 +35,7 @@ const ICON = {
   stift: ["M12 20h9", "M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"],
   etikett: ["M12.6 2.6A2 2 0 0 0 11.2 2H4a2 2 0 0 0-2 2v7.2a2 2 0 0 0 .6 1.4l8.7 8.7a2.4 2.4 0 0 0 3.4 0l6.6-6.6a2.4 2.4 0 0 0 0-3.4z", "M7.5 7.5h.01"],
   filter: ["M22 3H2l8 9.46V19l4 2v-8.54z"],
+  kopie: ["M8 8h12v12H8z", "M16 8V4H4v12h4"],
 };
 
 function symbol(pfade, groesse = 18) {

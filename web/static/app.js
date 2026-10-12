@@ -465,7 +465,9 @@ function artikelKarte(a, kompakt) {
     url ? el("div", { class: "details-aktionen" },
       el("a", { class: "knopf haupt mit-symbol", href: url, target: "_blank", rel: "noopener noreferrer" },
         el("span", {}, "Artikel öffnen"), symbol(ICON.extern, 16)),
-      el("button", { type: "button", class: "knopf", "data-kopieren": url, "data-fokus": `k|${a.url}` }, "Link kopieren")) : null) : null;
+      el("button", { type: "button", class: "knopf", "data-kopieren": url, "data-fokus": `k|${a.url}` }, "Link kopieren"),
+      a.tags.length ? el("button", { type: "button", class: "knopf", "data-kopieren": a.tags.join("\n"), "data-fokus": `kt|${a.url}`,
+        title: "Alle Tags dieses Artikels, einer pro Zeile" }, "Alle Tags kopieren") : null) : null) : null;
 
   const angeschaut = istAngeschaut(a);
   const abhaken = el("button", { type: "button", class: `abhaken${angeschaut ? " an" : ""}`, "aria-pressed": String(angeschaut),
@@ -528,11 +530,30 @@ $("alle-abhaken").addEventListener("click", () => {
   }
 });
 
+// ---------------------------------------------------------------- Kopieren
+
+/** In die Zwischenablage; ältere Browser (z. B. alte iPhones) über ein unsichtbares Textfeld. */
+async function kopiereText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    const feld = el("textarea", { readonly: "", "aria-hidden": "true", class: "kopier-feld" });
+    feld.value = text;
+    document.body.append(feld);
+    feld.select();
+    let ok = false;
+    try { ok = document.execCommand("copy"); } catch { ok = false; }
+    feld.remove();
+    return ok;
+  }
+}
+
 // ---------------------------------------------------------------- Tag-Pfad: wo liegt ein Tag im Tag-Baum?
 
 function tagKnopf(name, url, wo) {
   return el("button", { type: "button", class: "tag-knopf", "data-tag-pfad": name, "aria-haspopup": "dialog",
-    title: "Pfad im Tag-Baum anzeigen", "data-fokus": `t|${wo}|${url}|${name}` }, name);
+    title: "Antippen: Tag kopieren und Pfad im Tag-Baum anzeigen", "data-fokus": `t|${wo}|${url}|${name}` }, name);
 }
 
 /** Pfade laut Beschreibung in der Tag-Liste („A > B > Tag“, mehrere mit „ | “). Ohne Pfad: nur der Tag selbst. */
@@ -552,6 +573,7 @@ let tagPfadAusloeser = null;
 
 function zeigeTagPfad(knopf) {
   const name = knopf.dataset.tagPfad;
+  const kopiert = kopiereText(name);  // gleich beim Antippen – Browser erlauben Kopieren nur direkt nach einem Klick
   const { pfade, notiz, bekannt } = tagPfade(name);
   const dialog = $("tag-pfad");
   const treffer = daten.artikel.filter((a) => a.tags.includes(name)).length;
@@ -577,6 +599,7 @@ function zeigeTagPfad(knopf) {
         el("p", { class: "tag-pfad-oberzeile" }, pfade.length > 1 ? `${pfade.length} Pfade im Tag-Baum` : "Pfad im Tag-Baum"),
         el("h2", { id: "tag-pfad-name" }, name)),
       el("button", { type: "button", class: "symbol-knopf", "data-schliessen": "", "aria-label": "Schließen" }, symbol(ICON.x))),
+    el("p", { class: "tag-kopiert", role: "status", "aria-live": "polite" }),
     pfade.length === 1 && pfade[0].length > 1 ? el("p", { class: "tag-pfad-weg", "aria-hidden": "true" },
       ...pfade[0].flatMap((stufe, i) => [i ? el("span", { class: "pfeil" }, "→") : null, el("span", {}, stufe)])) : null,
     ...pfade.map((pfad, n) => el("section", { class: "pfad-block", "aria-label": pfade.length > 1 ? `Pfad ${n + 1}` : "Pfad" },
@@ -588,13 +611,27 @@ function zeigeTagPfad(knopf) {
       : "Den Pfad zeigt die Seite, sobald der Bot verbunden ist.") : null,
     el("footer", { class: "tag-pfad-fuss" },
       el("span", { class: "tag-pfad-info" }, `${tiefe > 1 ? `Ebene ${tiefe}` : "Oberste Ebene"} · ${anzahl(treffer, "Artikel", "Artikel")}`),
-      el("button", { type: "button", class: "knopf mit-symbol", "data-tag-filter": name },
-        symbol(ICON.filter, 16), el("span", {}, "Nur diese Artikel")))));
+      el("div", { class: "tag-pfad-knoepfe" },
+        el("button", { type: "button", class: "knopf mit-symbol", "data-tag-kopieren": name },
+          symbol(ICON.kopie, 16), el("span", {}, "Kopieren")),
+        el("button", { type: "button", class: "knopf mit-symbol", "data-tag-filter": name },
+          symbol(ICON.filter, 16), el("span", {}, "Nur diese Artikel"))))));
 
   tagPfadAusloeser = knopf;
   knopf.setAttribute("aria-expanded", "true");
   dialog.showModal();
   platziereTagPfad(dialog, knopf);
+  meldeKopiert(name, kopiert);
+}
+
+async function meldeKopiert(name, versprechen) {
+  const ok = await versprechen;
+  const hinweis = $("tag-pfad").querySelector(".tag-kopiert");
+  if (!hinweis) return;
+  hinweis.className = `tag-kopiert ${ok ? "ok" : "fehler"}`;
+  hinweis.replaceChildren(...(ok
+    ? [symbol(ICON.haken, 15), el("span", {}, "Kopiert: "), el("strong", {}, name), el("span", { class: "leise" }, " – zum Einfügen bereit")]
+    : [el("span", {}, "Kopieren nicht möglich – Name markieren und selbst kopieren.")]));
 }
 
 function platziereTagPfad(dialog, knopf) {
@@ -621,6 +658,11 @@ $("tag-pfad").addEventListener("close", () => {
 $("tag-pfad").addEventListener("click", (e) => {
   const dialog = $("tag-pfad");
   if (e.target === dialog || e.target.closest("[data-schliessen]")) { dialog.close(); return; }
+  const nochmal = e.target.closest("button[data-tag-kopieren]");
+  if (nochmal) {
+    meldeKopiert(nochmal.dataset.tagKopieren, kopiereText(nochmal.dataset.tagKopieren));
+    return;
+  }
   const filter = e.target.closest("button[data-tag-filter]");
   if (!filter) return;
   dialog.close();
@@ -659,13 +701,10 @@ $("ticker").addEventListener("click", async (e) => {
   }
   const kopieren = e.target.closest("button[data-kopieren]");
   if (!kopieren) return;
-  try {
-    await navigator.clipboard.writeText(kopieren.dataset.kopieren);
-    kopieren.textContent = "Kopiert";
-  } catch {
-    kopieren.textContent = "Kopieren nicht möglich";
-  }
-  setTimeout(() => { kopieren.textContent = "Link kopieren"; }, 2000);
+  const beschriftung = kopieren.dataset.beschriftung || kopieren.textContent;
+  kopieren.dataset.beschriftung = beschriftung;
+  kopieren.textContent = (await kopiereText(kopieren.dataset.kopieren)) ? "Kopiert" : "Kopieren nicht möglich";
+  setTimeout(() => { kopieren.textContent = beschriftung; }, 2000);
 });
 
 $("medien-leiste").addEventListener("click", (e) => {
