@@ -385,6 +385,7 @@ input::placeholder { color: var(--leise); }
 .artikel-fuss { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 2px; }
 .tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
 .tags li { padding: 2px 9px; border-radius: 4px; background: var(--chip); color: var(--chip-text); font-size: 13px; }
+.tags li.tags-mehr { background: none; color: var(--leise); }
 .details-knopf {
   display: inline-flex;
   align-items: center;

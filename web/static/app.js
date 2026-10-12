@@ -465,7 +465,8 @@ function artikelKarte(a, kompakt) {
       meta.length ? el("p", { class: "artikel-meta" }, meta.join(" · ")) : null,
       a.teaser && !offen ? el("p", { class: "teaser" }, a.teaser) : null,
       el("div", { class: "artikel-fuss" },
-        a.tags.length && !offen ? el("ul", { class: "tags", "aria-label": "Tags" }, ...a.tags.map((t) => el("li", {}, t))) : null,
+        a.tags.length && !offen ? el("ul", { class: "tags", "aria-label": "Tags" }, ...a.tags.slice(0, 6).map((t) => el("li", {}, t)),
+          a.tags.length > 6 ? el("li", { class: "tags-mehr", title: "Alle Tags unter „Details“" }, `+${a.tags.length - 6}`) : null) : null,
         el("button", knopfAttr, offen ? "Weniger" : "Details", symbol(ICON.pfeil, 16))),
       details));
 }

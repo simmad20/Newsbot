@@ -137,7 +137,7 @@ class ArtikelIn(BaseModel):
     autor: str = Field("", max_length=200)
     datum: Optional[str] = Field(None, max_length=40)
     datum_art: str = Field("", max_length=20)
-    tags: list[Annotated[str, Field(max_length=80)]] = Field(default_factory=list, max_length=20)
+    tags: list[Annotated[str, Field(max_length=80)]] = Field(default_factory=list, max_length=30)
     gemeldet: bool = False
     gefunden_um: str = Field(max_length=40)
     weg: Literal["", "feed", "news_sitemap", "sitemap", "startseite"] = ""

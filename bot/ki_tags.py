@@ -14,7 +14,7 @@ Ohne api_key liest der Bot den Schlüssel aus DEEPSEEK_API_KEY bzw. ANTHROPIC_AP
 
 Ablauf pro Prüfung: Die Tag-Liste steht im System-Prompt und wird zwischengespeichert (Claude: Prompt-
 Caching für eine Stunde, DeepSeek: automatisch) – wiederholte Anfragen kosten dafür nur einen Bruchteil.
-Die Artikel gehen in Paketen zu je 20 hinaus; die Antwort ist JSON (bei Claude per Schema erzwungen).
+Die Artikel gehen in Paketen zu je 10 hinaus; die Antwort ist JSON (bei Claude per Schema erzwungen).
 Zurück kommen nur Tags, die es in tags.csv wirklich gibt – alles andere wird verworfen.
 """
 from __future__ import annotations
@@ -22,7 +22,9 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import time
+from datetime import date
 from typing import NamedTuple
 
 import requests
@@ -34,8 +36,27 @@ NAMEN = {"anthropic": "Claude", "deepseek": "DeepSeek"}
 UMGEBUNG = {"anthropic": "ANTHROPIC_API_KEY", "deepseek": "DEEPSEEK_API_KEY"}
 DEEPSEEK_URL = "https://api.deepseek.com/chat/completions"
 EFFORTS = ("low", "medium", "high")
-STAPEL = 20                # Artikel pro Anfrage
-MAX_TAGS_PRO_ARTIKEL = 8
+STAPEL = 10                # Artikel pro Anfrage (mit 15–25 Tags pro Artikel wird die Antwort lang)
+MIN_TAGS_PRO_ARTIKEL = 15
+ZIEL_TAGS_PRO_ARTIKEL = 20
+MAX_TAGS_PRO_ARTIKEL = 25
+# Tags aus diesen obersten Ästen ordnen den Artikel ein (Struktur, Dokumenttyp, Auftrag …); sie stehen in der
+# Liste eines Artikels hinter den inhaltlichen Tags, damit vorne (Discord, Benachrichtigung) das Thema steht.
+ORDNUNGS_AESTE = ("struktur", "newsinfo", "auftragstags")
+IMMER = ("[S]1 Cyber",)  # bekommt jeder Artikel, der zum Thema gehört
+# Pflicht: aus jedem dieser Äste mindestens ein Tag. (Ast, Hinweis für die KI, Ersatz-Tag falls die KI keinen nimmt)
+PFLICHT_AESTE = (
+    (("Newsinfo", "Dokumententyp"), "meist „News“; „Studie“, „Meinungsäußerung“, „Strategische Info“ usw., "
+     "wenn das besser passt", "News"),
+    (("Newsinfo", "zeitlicher Aspekt"), "der Zeitraum, um den es geht – bei aktuellen Ereignissen „{zeitraum}“; "
+     "zusätzlich „State of the Art“, „Trendbrüche“ oder „Weak Signals“, wenn passend", "{zeitraum}"),
+    (("Newsinfo", "geographische Lokationen"), "alle Länder, Regionen, Meere usw., um die es geht – auch die Länder "
+     "der beteiligten Firmen, Behörden und Täter; ohne Ortsbezug „Global“ oder „kein Standort“", "kein Standort"),
+    (("Newsinfo", "Quellentyp"), "die Art der Quelle – bei Zeitungen und Nachrichtenportalen „Nachrichtenseite“",
+     "Nachrichtenseite"),
+)
+KI_AST = ("Auftragstags", "HSC", "HSC-KI")
+KI_ERSATZ = "[KI_]Tools und Usecases"
 MAX_TOKENS = 16000         # Denken + Antwort; 20 Artikel brauchen meist nur einen Bruchteil davon
 DEEPSEEK_MAX_TOKENS = 8000  # sicher unter DeepSeeks Obergrenze
 STANDARD_THEMA = ("Cyber und Technologie – IT-Sicherheit, Cyberangriffe und Cyberkriminalität, Datenschutz und "
@@ -80,23 +101,20 @@ Schritt 1 – relevant oder nicht:
 {filter}
 
 Schritt 2 – Tags (nur für relevante Artikel; bei "relevant": false bleibt die Tag-Liste leer):
-- Ein Tag passt, wenn der Artikel das Thema des Tags behandelt – es ist Gegenstand des Artikels
-  oder ein wesentlicher Teil davon. Eine bloße Erwähnung am Rand reicht nicht.
-- Die Liste ist oft hierarchisch: Die Beschreibung zeigt dann den Pfad im Tag-Baum
-  („Oberbegriff > Unterbegriff > Tag“). Nutze den Pfad, um zu verstehen, was ein Tag meint – ein
-  Tag „Hardware“ unter „Cyber > Cyber Infrastruktur“ meint IT-Hardware, nicht den Baumarkt.
-  Nimm den spezifischsten passenden Tag. Den übergeordneten Tag vergib nicht zusätzlich, nur weil
-  ein Untertag passt; nimm ihn nur, wenn der Artikel das Oberthema als Ganzes betrifft und kein
-  spezifischerer Tag passt.
-- Manche Tags dienen der Organisation (Ordner, Aufträge, interne Kategorien) und beschreiben keinen
-  Inhalt. Vergib einen Tag nur, wenn sich aus Name und Beschreibung klar ergibt, zu welchem Inhalt
-  er gehört.
-- Länder, Regionen und Organisationen: nur, wenn der Artikel von Ereignissen dort bzw. von der
-  Organisation handelt. Dass das Medium aus einem Land stammt, macht den Artikel nicht zu einem
-  Artikel über dieses Land.
-- Mehrere Tags sind normal, wenn der Artikel mehrere Themen der Liste behandelt – höchstens
-  {max_tags} pro Artikel; nimm dann die zentralsten.
-- Eine leere Liste ist richtig, wenn kein Tag passt. Das ist bei vielen Artikeln der Fall.
+Die Tags beschreiben den Artikel für ein Archiv möglichst vollständig: Thema, Technik, Akteure,
+Orte, Zeitraum, Art des Dokuments und der Quelle. Jeder relevante Artikel bekommt deshalb
+mindestens {min_tags} Tags, Ziel {min_tags}–{ziel_tags}, höchstens {max_tags}.
+- In der Liste stehen nur die untersten Tags des Tag-Baums – Tags ohne eigene Untertags. Die
+  Beschreibung zeigt den Pfad („Oberbegriff > Unterbegriff > Tag“). Die Oberbegriffe im Pfad sind
+  selbst keine Tags und dürfen nie vergeben werden; nutze sie nur, um zu verstehen, was ein Tag meint
+  – „Hardware“ unter „Cyber > Cyber Infrastruktur“ meint IT-Hardware, nicht den Baumarkt.
+{pflicht}
+- Den Rest füllst du mit inhaltlichen Tags aus allen Bereichen der Liste (z. B. Cyber, KriMiSi,
+  InnoTech, Allgemeine Tags): das Hauptthema, die eingesetzte oder betroffene Technik, Branchen,
+  Akteure, Folgen. Ein Tag passt, wenn der Artikel das Thema behandelt oder es ein erkennbarer Aspekt
+  des Artikels ist. Vergib nie einen Tag, der klar nicht zutrifft, nur um auf die Anzahl zu kommen.
+- Länder und Regionen: nur, wenn der Artikel von Ereignissen oder Akteuren dort handelt. Dass das
+  Medium aus einem Land stammt, macht den Artikel nicht zu einem Artikel über dieses Land.
 
 Form der Antwort:
 - Verwende ausschließlich Tags aus der Liste, Zeichen für Zeichen in der dort stehenden Schreibweise
@@ -136,7 +154,7 @@ Es gibt keinen Themenfilter – setze bei jedem Artikel "relevant": true."""
 JSON_FORM = """
 
 Antworte ausschließlich mit einem JSON-Objekt in genau dieser Form, ohne weiteren Text:
-{"artikel": [{"id": "0", "relevant": true, "tags": ["Name aus der Tag-Liste"]}, {"id": "1", "relevant": false, "tags": []}]}"""
+{"artikel": [{"id": "0", "relevant": true, "tags": ["Name aus der Tag-Liste", "noch ein Name", "…"]}, {"id": "1", "relevant": false, "tags": []}]}"""
 
 
 class KiFehler(Exception):
@@ -177,13 +195,79 @@ def einstellungen(cfg: dict) -> dict:
     return llm
 
 
+def pfade(tags: dict[str, str]) -> dict[str, list[tuple[str, ...]]]:
+    """Pfade im Tag-Baum laut Beschreibung („Cyber > Cyber Security > Resilienz“, mehrere mit „ | “).
+    Eine Beschreibung, die kein Pfad zu diesem Tag ist, zählt als Tag ganz oben."""
+    ergebnis = {}
+    for name, text in tags.items():
+        liste = []
+        for teil in text.split(" | ") if text else []:
+            pfad = tuple(x.strip() for x in teil.split(" > "))
+            if len(pfad) > 1 and pfad[-1].lower() == name.lower():
+                liste.append(pfad)
+        ergebnis[name] = liste or [(name,)]
+    return ergebnis
+
+
+def unterste_tags(tags: dict[str, str]) -> dict[str, str]:
+    """Nur Tags ohne Untertags – Oberbegriffe (die irgendwo mitten in einem Pfad stehen) fallen weg."""
+    oberbegriffe = {p[i].lower() for liste in pfade(tags).values() for p in liste for i in range(len(p) - 1)}
+    return {n: t for n, t in tags.items() if n.lower() not in oberbegriffe}
+
+
+def im_ast(tag_pfade: list[tuple[str, ...]], ast: tuple[str, ...]) -> bool:
+    klein = tuple(x.lower() for x in ast)
+    return any(len(p) > len(ast) and tuple(x.lower() for x in p[:len(ast)]) == klein for p in tag_pfade)
+
+
+def aktueller_zeitraum(tags: dict[str, str]) -> str | None:
+    """Der Tag wie „2026-2030“, in dem das laufende Jahr liegt."""
+    jahr = date.today().year
+    for name in tags:
+        m = re.fullmatch(r"(\d{4})\s*-\s*(\d{4}|später)", name)
+        if m and int(m.group(1)) <= jahr and (m.group(2) == "später" or jahr <= int(m.group(2))):
+            return name
+    return None
+
+
 def tag_liste(tags: dict[str, str]) -> str:
     return "\n".join(f"{name} | {text}" if text else name for name, text in tags.items())
 
 
+def pflicht_regeln(blaetter: dict[str, str]) -> tuple[str, list[tuple[tuple[str, ...], str]]]:
+    """Prompt-Zeilen und (Ast, Ersatz-Tag) für die Pflicht-Äste, die es in der Tag-Liste gibt."""
+    p = pfade(blaetter)
+    zeitraum = aktueller_zeitraum(blaetter) or ""
+    vorhanden = {n.lower(): n for n in blaetter}
+    zeilen, ersatz = [], []
+    immer = [vorhanden[t.lower()] for t in IMMER if t.lower() in vorhanden]
+    if immer:
+        zeilen.append(f"  - immer: {', '.join(f'„{t}“' for t in immer)}")
+    for ast, hinweis, ersatz_tag in PFLICHT_AESTE:
+        if any(im_ast(p[n], ast) for n in blaetter):
+            zeilen.append(f"  - {' > '.join(ast)} > …: {hinweis.format(zeitraum=zeitraum or 'der laufende Zeitraum')}")
+            ersatz_tag = vorhanden.get(ersatz_tag.format(zeitraum=zeitraum).lower())
+            if ersatz_tag:
+                ersatz.append((ast, ersatz_tag))
+    ki_tags = [n for n in blaetter if im_ast(p[n], KI_AST)]
+    if ki_tags:
+        zeilen.append(
+            "  - wenn der Artikel irgendetwas mit Künstlicher Intelligenz zu tun hat (KI-Modelle, Chatbots, "
+            "maschinelles Lernen, KI-Regulierung, KI in Angriff oder Abwehr …): zusätzlich mindestens einer aus "
+            f"{' > '.join(KI_AST)} – {', '.join(f'„{t}“' for t in ki_tags)} (Tools und Usecases = Produkte, "
+            "Anwendungen, Einsatzfälle; Grundlagendokument = Strategien, Studien, Gesetze, Grundsatzpapiere; "
+            "Ausbildung = Aus- und Weiterbildung) – und den inhaltlichen Tag „Künstliche Intelligenz“, falls vorhanden")
+    if not zeilen:
+        return "", ersatz
+    return "- Pflicht – aus jedem dieser Äste mindestens ein Tag:\n" + "\n".join(zeilen), ersatz
+
+
 def system_prompt(tags: dict[str, str], thema: str) -> str:
     filter_text = FILTER.format(thema=thema) if thema else KEIN_FILTER
-    return ANLEITUNG.format(filter=filter_text, max_tags=MAX_TAGS_PRO_ARTIKEL, tag_liste=tag_liste(tags))
+    blaetter = unterste_tags(tags)
+    pflicht, _ = pflicht_regeln(blaetter)
+    return ANLEITUNG.format(filter=filter_text, min_tags=MIN_TAGS_PRO_ARTIKEL, ziel_tags=ZIEL_TAGS_PRO_ARTIKEL,
+                            max_tags=MAX_TAGS_PRO_ARTIKEL, pflicht=pflicht, tag_liste=tag_liste(blaetter))
 
 
 def artikel_nachricht(stapel: list[dict]) -> str:
@@ -205,7 +289,12 @@ class TagVergabe:
         self.schluessel = llm["api_key"]
         self.modell = llm["modell"]
         self.effort = llm["effort"]
-        self.nach_klein = {n.lower(): n for n in tags}
+        blaetter = unterste_tags(tags)
+        self.nach_klein = {n.lower(): n for n in blaetter}  # nur unterste Tags sind erlaubt
+        self.pfade = pfade(tags)
+        self.immer = [self.nach_klein[t.lower()] for t in IMMER if t.lower() in self.nach_klein]
+        _, self.ersatz = pflicht_regeln(blaetter)
+        self.ki_ersatz = self.nach_klein.get(KI_ERSATZ.lower())
         prompt = system_prompt(tags, llm["thema"])
         if self.anbieter == "anthropic":
             try:
@@ -254,14 +343,37 @@ class TagVergabe:
                 name = self.nach_klein.get(" ".join(t.split()).lower()) if isinstance(t, str) else None
                 if name is None:
                     verworfen += 1
-                elif name not in tags and len(tags) < MAX_TAGS_PRO_ARTIKEL:
+                elif name not in tags:
                     tags.append(name)
-            a["tags"], a["tags_offen"] = tags, False
+            a["tags"], a["tags_offen"] = self._ergaenze(tags) if a["relevant"] else [], False
         if verworfen:
-            log.info("KI-Tags: %d unbekannte Tag-Namen verworfen.", verworfen)
+            log.info("KI-Tags: %d unbekannte oder übergeordnete Tag-Namen verworfen.", verworfen)
+        zu_wenig = [a for a in stapel if a.get("relevant") and not a["tags_offen"] and len(a["tags"]) < MIN_TAGS_PRO_ARTIKEL]
+        if zu_wenig:
+            log.info("KI-Tags: %d Artikel mit weniger als %d Tags.", len(zu_wenig), MIN_TAGS_PRO_ARTIKEL)
         log.info("KI-Tags (%s): %d Artikel, %d zum Thema, Tokens: %d neu, %d aus dem Cache, %d Ausgabe.",
                  self.modell, len(stapel), sum(a.get("relevant", True) for a in stapel),
                  antwort.neu, antwort.cache, antwort.ausgabe)
+
+    def _ergaenze(self, tags: list[str]) -> list[str]:
+        """Pflicht-Tags absichern: [S]1 Cyber immer, je Pflicht-Ast ein Ersatz-Tag, falls die KI keinen
+        genommen hat, und bei KI-Themen ein HSC-KI-Tag. Danach: inhaltliche Tags vorne, höchstens 25."""
+        ergebnis = list(tags)
+        for t in self.immer:
+            if t not in ergebnis:
+                ergebnis.append(t)
+        for ast, ersatz in self.ersatz:
+            if not any(im_ast(self.pfade.get(t, []), ast) for t in ergebnis):
+                ergebnis.append(ersatz)
+        geht_um_ki = any("künstliche intelligenz" in (x.lower() for x in p) for t in ergebnis for p in self.pfade.get(t, []))
+        if geht_um_ki and self.ki_ersatz and not any(im_ast(self.pfade.get(t, []), KI_AST) for t in ergebnis):
+            ergebnis.append(self.ki_ersatz)
+        ordnung = lambda t: any(p[0].lower() in ORDNUNGS_AESTE for p in self.pfade.get(t, [(t,)]))  # noqa: E731
+        ergebnis.sort(key=ordnung)  # stabil: Reihenfolge der KI bleibt innerhalb der Gruppen erhalten
+        inhalt = [t for t in ergebnis if not ordnung(t)]
+        einordnung = [t for t in ergebnis if ordnung(t)]
+        # Kürzen nur bei den inhaltlichen Tags – die Pflicht-Einordnung bleibt immer vollständig
+        return inhalt[:max(0, MAX_TAGS_PRO_ARTIKEL - len(einordnung))] + einordnung
 
     # ------------------------------------------------------------------ Claude (Anthropic-SDK)
 

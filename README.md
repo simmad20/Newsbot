@@ -249,15 +249,29 @@ auf `Tag;Beschreibung` um: Die Tags bleiben, die Schlagwörter fallen weg (Siche
 ## Tags per KI
 
 Für jeden neuen Artikel schickt der Bot **Medium, Titel und Vorschautext** an die KI (DeepSeek oder
-Claude), zusammen mit deiner Tag-Liste. Die KI wählt die passenden Tags aus – nur Tags, die es in `tags.csv`
-gibt; erfundene Namen verwirft der Bot. Ein Artikel kann mehrere Tags bekommen (höchstens 8) oder
-keinen, wenn nichts passt.
+Claude), zusammen mit deiner Tag-Liste. Die KI entscheidet zuerst, ob der Artikel zum Thema gehört
+(siehe Themenfilter), und vergibt dann Tags – nur Tags, die es in `tags.csv` gibt; erfundene Namen
+verwirft der Bot.
 
-Die Anweisung an die KI („Prompt“) steht in `bot/ki_tags.py`. Kurz gesagt: Ein Tag passt nur, wenn
-der Artikel das Thema wirklich behandelt (eine Erwähnung am Rand reicht nicht); im Tag-Baum zählt der
-spezifischste passende Tag, nicht zusätzlich alle übergeordneten; ein Land passt nur, wenn der
-Artikel von dort handelt – nicht, weil das Medium von dort ist. Texte aus den Artikeln behandelt
-die KI nur als Material, nie als Anweisung.
+Regeln für die Tags (Prompt in `bot/ki_tags.py`):
+
+- **Nur die untersten Tags** des Tag-Baums – also keine, die noch Untertags haben. Die KI bekommt nur
+  diese zur Auswahl (mit ihrem Pfad als Erklärung); schickt sie trotzdem einen Ober-Tag, wirft der
+  Bot ihn weg. Welche Tags unten liegen, erkennt der Bot am Pfad in der Beschreibung – deshalb den
+  Tag-Baum mit Pfad importieren (`tags-import/tags.csv`).
+- **15–20 Tags pro Artikel** (mindestens 15, höchstens 25): Thema, Technik, Akteure, Orte, Zeitraum,
+  Dokument- und Quellentyp.
+- **Pflicht für jeden Artikel:** `[S]1 Cyber` (Struktur), ein Tag aus *Newsinfo > Dokumententyp*
+  (meist „News“), aus *zeitlicher Aspekt* (z. B. „2026-2030“), aus *geographische Lokationen* (Länder
+  usw., sonst „Global“/„kein Standort“) und aus *Quellentyp* (meist „Nachrichtenseite“). Bei allem
+  mit **Künstlicher Intelligenz** zusätzlich ein Tag aus *Auftragstags > HSC > HSC-KI*.
+- Vergisst die KI einen Pflicht-Ast, ergänzt der Bot den naheliegenden Tag selbst („[S]1 Cyber“,
+  „News“, den aktuellen Zeitraum, „kein Standort“, „Nachrichtenseite“, bei KI „[KI_]Tools und
+  Usecases“).
+- Inhaltliche Tags stehen vorne, die Einordnung (Struktur, Newsinfo, Auftragstags) dahinter. Auf der
+  Artikelkarte stehen die ersten 6, alle unter „Details“.
+- Ein Land passt nur, wenn der Artikel von dort handelt – nicht, weil das Medium von dort ist. Texte
+  aus den Artikeln behandelt die KI nur als Material, nie als Anweisung.
 
 Einstellungen in `config.toml`:
 
@@ -290,7 +304,7 @@ Statt in `config.toml` darf der Schlüssel auch in der Umgebungsvariable `DEEPSE
   Tipp: Wo es eine eigene Rubrik gibt, trag besser die ein (z. B.
   `https://www.theguardian.com/uk/technology` statt `https://www.theguardian.com/`) – weniger
   Artikel, weniger Kosten.
-- **Kosten:** Die Artikel gehen in Paketen zu 20 hinaus. Die Tag-Liste wird zwischengespeichert
+- **Kosten:** Die Artikel gehen in Paketen zu 10 hinaus. Die Tag-Liste wird zwischengespeichert
   und kostet bei weiteren Anfragen nur einen Bruchteil. Was du tatsächlich verbrauchst, steht in
   `newsbot.log` („KI-Tags: … Tokens“) und auf der Seite des Anbieters.
 - **Klappt die Tag-Vergabe nicht** (Schlüssel falsch, Guthaben leer, KI nicht erreichbar), steht
