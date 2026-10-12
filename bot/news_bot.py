@@ -720,7 +720,8 @@ def sende_push_an_alle(cfg: dict, state: dict, nachricht: dict) -> tuple[int, in
 
 
 def push_nachricht(a: dict) -> dict:
-    zeile = a["medium"] + (f" – {', '.join(a['tags'])}" if a["tags"] else "")
+    tags = ", ".join(a["tags"][:3]) + (f" +{len(a['tags']) - 3}" if len(a["tags"]) > 3 else "")  # Platz für die Vorschau lassen
+    zeile = a["medium"] + (f" – {tags}" if a["tags"] else "")
     text = f"{zeile}\n{a['teaser']}" if a["teaser"] else zeile
     return {"titel": a["titel"][:200], "text": text[:300], "url": a["url"], "tag": a["url"][:200]}
 
@@ -777,7 +778,7 @@ def merke_fuer_dashboard(state: dict, a: dict, gemeldet: bool) -> None:
     eintrag = {
         "url": a["url"], "titel": a["titel"][:300], "medium": a["medium"][:200], "teaser": a["teaser"][:1200],
         "autor": a["autor"][:200], "datum": a["datum"].isoformat() if a["datum"] else None,
-        "datum_art": a["datum_art"], "tags": [t[:80] for t in a["tags"][:20]], "gemeldet": gemeldet,
+        "datum_art": a["datum_art"], "tags": [t[:80] for t in a["tags"][:30]], "gemeldet": gemeldet,
         "weg": a.get("weg", "feed"),
         "gefunden_um": jetzt_utc().isoformat(),
     }
