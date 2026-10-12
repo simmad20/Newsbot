@@ -552,9 +552,94 @@ async function kopiereText(text) {
 // ---------------------------------------------------------------- Tag-Pfad: wo liegt ein Tag im Tag-Baum?
 
 function tagKnopf(name, url, wo) {
-  return el("button", { type: "button", class: "tag-knopf", "data-tag-pfad": name, "aria-haspopup": "dialog",
-    title: "Antippen: Tag kopieren und Pfad im Tag-Baum anzeigen", "data-fokus": `t|${wo}|${url}|${name}` }, name);
+  return el("button", { type: "button", class: "tag-knopf", "data-tag-pfad": name,
+    title: "Antippen: kopieren · Gedrückt halten, Rechtsklick oder Umschalt+Klick: Pfad im Tag-Baum",
+    "data-fokus": `t|${wo}|${url}|${name}` }, name);
 }
+
+// ---- Antippen kopiert, Gedrückthalten / Rechtsklick / Umschalt+Klick zeigt den Pfad, Strg+C über einem Tag kopiert
+
+const HINWEIS_SCHLUESSEL = "newsbot_tag_hinweis";
+let toastUhr = null;
+
+function zeigeToast(...inhalt) {
+  const toast = $("toast");
+  toast.replaceChildren(...inhalt.filter(Boolean));
+  toast.hidden = false;
+  toast.classList.remove("weg");
+  void toast.offsetWidth;  // Animation neu starten, auch wenn schon sichtbar
+  toast.classList.add("da");
+  clearTimeout(toastUhr);
+  toastUhr = setTimeout(() => { toast.classList.remove("da"); toast.classList.add("weg"); }, 2400);
+}
+
+async function kopiereTag(knopf) {
+  const name = knopf.dataset.tagPfad;
+  const ok = await kopiereText(name);
+  if (!ok) {
+    zeigeToast(el("span", {}, "Kopieren nicht möglich – gedrückt halten zeigt den Tag zum Markieren."));
+    return;
+  }
+  knopf.classList.remove("kopiert");
+  void knopf.offsetWidth;
+  knopf.classList.add("kopiert");
+  setTimeout(() => knopf.classList.remove("kopiert"), 900);
+  let ersterHinweis = false;
+  try {
+    ersterHinweis = !localStorage.getItem(HINWEIS_SCHLUESSEL);
+    localStorage.setItem(HINWEIS_SCHLUESSEL, "1");
+  } catch { /* ohne Speicher eben jedes Mal ohne Hinweis */ }
+  zeigeToast(symbol(ICON.haken, 16), el("span", {}, "Kopiert: "), el("strong", {}, name),
+    ersterHinweis ? el("small", {}, "Pfad im Tag-Baum: gedrückt halten (Handy) oder Rechtsklick (PC)") : null);
+}
+
+let drueckUhr = null;
+let drueckStart = null;
+let letzterZeiger = "mouse";
+let klickIgnorieren = 0;  // bis dahin kopiert der Klick nicht, der zum selben Gedrückthalten gehört
+
+$("ticker").addEventListener("pointerdown", (e) => {
+  const knopf = e.target.closest("button[data-tag-pfad]");
+  letzterZeiger = e.pointerType;
+  klickIgnorieren = 0;  // neue Berührung – neuer Klick zählt wieder
+  if (!knopf || e.pointerType === "mouse") return;  // Maus: Rechtsklick statt Gedrückthalten
+  drueckStart = { x: e.clientX, y: e.clientY };
+  clearTimeout(drueckUhr);
+  drueckUhr = setTimeout(() => {
+    drueckUhr = null;
+    klickIgnorieren = Date.now() + 800;
+    if (navigator.vibrate) navigator.vibrate(12);
+    zeigeTagPfad(knopf);
+  }, 480);
+});
+const drueckenAbbrechen = () => { clearTimeout(drueckUhr); drueckUhr = null; };
+$("ticker").addEventListener("pointerup", drueckenAbbrechen);
+$("ticker").addEventListener("pointercancel", drueckenAbbrechen);
+$("ticker").addEventListener("pointermove", (e) => {
+  if (drueckUhr && drueckStart && Math.hypot(e.clientX - drueckStart.x, e.clientY - drueckStart.y) > 10) drueckenAbbrechen();
+});
+$("ticker").addEventListener("contextmenu", (e) => {  // Rechtsklick, Menütaste – und Android meldet Gedrückthalten so
+  const knopf = e.target.closest("button[data-tag-pfad]");
+  if (!knopf) return;
+  e.preventDefault();
+  if ($("tag-pfad").open) return;  // schon über Gedrückthalten geöffnet
+  drueckenAbbrechen();
+  if (letzterZeiger !== "mouse") klickIgnorieren = Date.now() + 800;  // nach dem Finger-Gedrückthalten folgt evtl. ein Klick
+  zeigeTagPfad(knopf);
+});
+
+let tagUnterMaus = null;
+$("ticker").addEventListener("pointerover", (e) => { tagUnterMaus = e.target.closest("button[data-tag-pfad]"); });
+$("ticker").addEventListener("pointerleave", () => { tagUnterMaus = null; });
+document.addEventListener("keydown", (e) => {
+  if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== "c" || e.altKey || e.shiftKey) return;
+  if (String(getSelection() || "").trim()) return;  // markierten Text normal kopieren
+  const fokus = document.activeElement?.closest?.("button[data-tag-pfad]");
+  const knopf = (tagUnterMaus?.isConnected ? tagUnterMaus : null) || fokus;  // Maus zeigt, was gemeint ist
+  if (!knopf) return;
+  e.preventDefault();
+  kopiereTag(knopf);
+});
 
 /** Pfade laut Beschreibung in der Tag-Liste („A > B > Tag“, mehrere mit „ | “). Ohne Pfad: nur der Tag selbst. */
 function tagPfade(name) {
@@ -573,7 +658,6 @@ let tagPfadAusloeser = null;
 
 function zeigeTagPfad(knopf) {
   const name = knopf.dataset.tagPfad;
-  const kopiert = kopiereText(name);  // gleich beim Antippen – Browser erlauben Kopieren nur direkt nach einem Klick
   const { pfade, notiz, bekannt } = tagPfade(name);
   const dialog = $("tag-pfad");
   const treffer = daten.artikel.filter((a) => a.tags.includes(name)).length;
@@ -621,7 +705,6 @@ function zeigeTagPfad(knopf) {
   knopf.setAttribute("aria-expanded", "true");
   dialog.showModal();
   platziereTagPfad(dialog, knopf);
-  meldeKopiert(name, kopiert);
 }
 
 async function meldeKopiert(name, versprechen) {
@@ -679,7 +762,12 @@ addEventListener("scroll", () => {
 $("ticker").addEventListener("click", async (e) => {
   const tagPfad = e.target.closest("button[data-tag-pfad]");
   if (tagPfad) {
-    zeigeTagPfad(tagPfad);
+    if (Date.now() < klickIgnorieren) {  // Klick am Ende des Gedrückthaltens
+      klickIgnorieren = 0;
+      return;
+    }
+    if (e.shiftKey) zeigeTagPfad(tagPfad);
+    else kopiereTag(tagPfad);
     return;
   }
   const haken = e.target.closest("button[data-abhaken]");
