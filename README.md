@@ -46,8 +46,9 @@ Discord ist optional.
    Von Hand geht es auch, mit Excel oder einem Texteditor – siehe „Quellen und Tags“ unten.
 4. **Tags per KI:** Bei **DeepSeek** ([platform.deepseek.com](https://platform.deepseek.com)) oder
    **Claude** ([console.anthropic.com](https://console.anthropic.com)) ein Konto anlegen, etwas
-   Guthaben aufladen und einen API-Schlüssel erstellen. In `bot/config.toml` eintragen (Datei
-   anlegen, falls es sie noch nicht gibt):
+   Guthaben aufladen und einen API-Schlüssel erstellen. In `bot/config.toml` eintragen (gibt es
+   die Datei noch nicht: im Ordner `bot` `cp config.beispiel.toml config.toml` – die Vorlage
+   erklärt jede Einstellung):
    ```toml
    [llm]
    api_key = "sk-..."
@@ -380,7 +381,8 @@ Seite. Gibt es für das Ressort einen eigenen Feed, trag besser den ein.
 | `bot/listen.py` | liest, prüft und ändert `quellen.csv` und `tags.csv` |
 | `bot/ki_tags.py` | Tags per KI: Prompt und Anbindung an DeepSeek bzw. Claude |
 | `bot/seiten.py` | Seiten ohne Feed: Sitemaps, Angaben aus Artikelseiten, Links der Startseite |
-| `bot/config.toml` | alle Einstellungen |
+| `bot/config.toml` | alle Einstellungen (geheim, wird nie hochgeladen – muss existieren, sonst startet der Bot nicht) |
+| `bot/config.beispiel.toml` | Vorlage mit Testwerten und Erklärung jeder Einstellung: `cp config.beispiel.toml config.toml`, dann eigene Werte eintragen |
 | `bot/quellen.csv` | deine Quellen nach Wochentag (entsteht automatisch) |
 | `bot/tags.csv` | deine Tags mit Beschreibung (entsteht automatisch) |
 | `bot/state.json` | gemeldete Artikel, Verlauf, Geräte, Pause/Intervall (entsteht automatisch) |
