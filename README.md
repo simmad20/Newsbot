@@ -261,11 +261,15 @@ Regeln für die Tags (Prompt in `bot/ki_tags.py`):
   diese zur Auswahl (mit ihrem Pfad als Erklärung); schickt sie trotzdem einen Ober-Tag, wirft der
   Bot ihn weg. Welche Tags unten liegen, erkennt der Bot am Pfad in der Beschreibung – deshalb den
   Tag-Baum mit Pfad importieren (`tags-import/tags.csv`).
-- **15–20 Tags pro Artikel** (mindestens 15, höchstens 25): Thema, Technik, Akteure, Orte, Zeitraum,
-  Dokument- und Quellentyp.
-- **Pflicht für jeden Artikel:** `[S]1 Cyber` (Struktur), ein Tag aus *Newsinfo > Dokumententyp*
-  (meist „News“), aus *zeitlicher Aspekt* (z. B. „2026-2030“), aus *geographische Lokationen* (Länder
-  usw., sonst „Global“/„kein Standort“) und aus *Quellentyp* (meist „Nachrichtenseite“). Bei allem
+- **So viele belegte Tags wie möglich** – typisch 15–40 pro Artikel (höchstens 40). Die KI geht jeden
+  Artikel mit elf Blickwinkeln durch: wer, was, wie (Technik), wo, warum (Politik/Recht),
+  Infrastruktur, Gesellschaft/Wirtschaft, Fahrzeuge, Information/Dokument, Zukunftstechnik,
+  Krisenarten. Jeder Tag muss sich auf Titel oder Vorschau stützen; eindeutig Erschlossenes ist
+  erlaubt, Geratenes nicht. Vor der Antwort prüft sie still eine Checkliste.
+- **Pflicht für jeden Artikel:** `[S]1 Cyber` (Struktur; zusätzlich `[S]2 KriMiSi` bei Krisen-,
+  Militär- und Sicherheitsthemen, `[S]3 InnoTech` bei Innovation und Forschung), ein Tag aus *Newsinfo > Dokumententyp*
+  (meist „News“), aus *zeitlicher Aspekt* (z. B. „2026-2030“), aus *geographische Lokationen* (jedes
+  betroffene Land einzeln; weltweit „Global“, im All „Weltraum“, ohne Ortsbezug „kein Standort“) und aus *Quellentyp* (meist „Nachrichtenseite“). Bei allem
   mit **Künstlicher Intelligenz** zusätzlich ein Tag aus *Auftragstags > HSC > HSC-KI*.
 - Vergisst die KI einen Pflicht-Ast, ergänzt der Bot den naheliegenden Tag selbst („[S]1 Cyber“,
   „News“, den aktuellen Zeitraum, „kein Standort“, „Nachrichtenseite“, bei KI „[KI_]Tools und
@@ -306,7 +310,7 @@ Statt in `config.toml` darf der Schlüssel auch in der Umgebungsvariable `DEEPSE
   Tipp: Wo es eine eigene Rubrik gibt, trag besser die ein (z. B.
   `https://www.theguardian.com/uk/technology` statt `https://www.theguardian.com/`) – weniger
   Artikel, weniger Kosten.
-- **Kosten:** Die Artikel gehen in Paketen zu 10 hinaus. Die Tag-Liste wird zwischengespeichert
+- **Kosten:** Die Artikel gehen in Paketen zu 6 hinaus. Die Tag-Liste wird zwischengespeichert
   und kostet bei weiteren Anfragen nur einen Bruchteil. Was du tatsächlich verbrauchst, steht in
   `newsbot.log` („KI-Tags: … Tokens“) und auf der Seite des Anbieters.
 - **Klappt die Tag-Vergabe nicht** (Schlüssel falsch, Guthaben leer, KI nicht erreichbar), steht

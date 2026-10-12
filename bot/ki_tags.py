@@ -36,22 +36,26 @@ NAMEN = {"anthropic": "Claude", "deepseek": "DeepSeek"}
 UMGEBUNG = {"anthropic": "ANTHROPIC_API_KEY", "deepseek": "DEEPSEEK_API_KEY"}
 DEEPSEEK_URL = "https://api.deepseek.com/chat/completions"
 EFFORTS = ("low", "medium", "high")
-STAPEL = 10                # Artikel pro Anfrage (mit 15–25 Tags pro Artikel wird die Antwort lang)
+STAPEL = 6                 # Artikel pro Anfrage (mit bis zu 40 Tags pro Artikel wird die Antwort lang)
 MIN_TAGS_PRO_ARTIKEL = 15
-ZIEL_TAGS_PRO_ARTIKEL = 20
-MAX_TAGS_PRO_ARTIKEL = 25
+ZIEL_TAGS_PRO_ARTIKEL = 40  # obere Grenze des typischen Bereichs („15–40“)
+MAX_TAGS_PRO_ARTIKEL = 40
 # Tags aus diesen obersten Ästen ordnen den Artikel ein (Struktur, Dokumenttyp, Auftrag …); sie stehen in der
 # Liste eines Artikels hinter den inhaltlichen Tags, damit vorne (Discord, Benachrichtigung) das Thema steht.
 ORDNUNGS_AESTE = ("struktur", "newsinfo", "auftragstags")
 IMMER = ("[S]1 Cyber",)  # bekommt jeder Artikel, der zum Thema gehört
+STRUKTUR_ZUSATZ = (("[S]2 KriMiSi", "bei Krisen-, Militär- oder Sicherheitsthemen"),
+                   ("[S]3 InnoTech", "bei Innovation, Zukunftstechnik oder Forschung"))
 # Pflicht: aus jedem dieser Äste mindestens ein Tag. (Ast, Hinweis für die KI, Ersatz-Tag falls die KI keinen nimmt)
 PFLICHT_AESTE = (
     (("Newsinfo", "Dokumententyp"), "meist „News“; „Studie“, „Meinungsäußerung“, „Strategische Info“ usw., "
      "wenn das besser passt", "News"),
     (("Newsinfo", "zeitlicher Aspekt"), "der Zeitraum, um den es geht – bei aktuellen Ereignissen „{zeitraum}“; "
      "zusätzlich „State of the Art“, „Trendbrüche“ oder „Weak Signals“, wenn passend", "{zeitraum}"),
-    (("Newsinfo", "geographische Lokationen"), "alle Länder, Regionen, Meere usw., um die es geht – auch die Länder "
-     "der beteiligten Firmen, Behörden und Täter; ohne Ortsbezug „Global“ oder „kein Standort“", "kein Standort"),
+    (("Newsinfo", "geographische Lokationen"), "jedes Land, um das es geht, einzeln mit seinem Länder-Tag (nicht den "
+     "Kontinent – der ist nur ein Oberbegriff), dazu Meere, Luftraum, Hoheitsgewässer, Arktis/Antarktis, eingeschränkt "
+     "anerkannte Gebiete (z. B. Taiwan, Kosovo), wenn genannt; grenzüberschreitend, weltweit oder „das ganze Internet“ → "
+     "„Global“; im All → „Weltraum“; gar kein Ortsbezug → „kein Standort“", "kein Standort"),
     (("Newsinfo", "Quellentyp"), "die Art der Quelle – bei Zeitungen und Nachrichtenportalen „Nachrichtenseite“",
      "Nachrichtenseite"),
 )
@@ -101,20 +105,80 @@ Schritt 1 – relevant oder nicht:
 {filter}
 
 Schritt 2 – Tags (nur für relevante Artikel; bei "relevant": false bleibt die Tag-Liste leer):
-Die Tags beschreiben den Artikel für ein Archiv möglichst vollständig: Thema, Technik, Akteure,
-Orte, Zeitraum, Art des Dokuments und der Quelle. Jeder relevante Artikel bekommt deshalb
-mindestens {min_tags} Tags, Ziel {min_tags}–{ziel_tags}, höchstens {max_tags}.
-- In der Liste stehen nur die untersten Tags des Tag-Baums – Tags ohne eigene Untertags. Die
-  Beschreibung zeigt den Pfad („Oberbegriff > Unterbegriff > Tag“). Die Oberbegriffe im Pfad sind
-  selbst keine Tags und dürfen nie vergeben werden; nutze sie nur, um zu verstehen, was ein Tag meint
-  – „Hardware“ unter „Cyber > Cyber Infrastruktur“ meint IT-Hardware, nicht den Baumarkt.
+Ziel: so viele Tags wie möglich – aber jeder einzelne belegt. Sei gründlich statt zurückhaltend, doch
+jeder Tag muss sich auf etwas stützen, das in Titel oder Vorschau steht oder eindeutig daraus folgt.
+Typisch sind {min_tags}–{ziel_tags} Tags pro Artikel. Kommst du auf weniger als {min_tags}, hast du fast
+sicher Blickwinkel übersehen – geh sie noch einmal durch.
+
+Geh jeden Artikel mit ALLEN elf Blickwinkeln durch und frag jedes Mal: Gibt es in der Tag-Liste einen
+Tag für etwas Konkretes in diesem Text? (Die Beispiele zeigen nur, wonach du suchst – vergeben darfst
+du nur, was in der Liste steht.)
+ 1. WER – Akteure: Unternehmen, Behörden und Verwaltung, Polizei, Justiz, Militär, Geheim- und
+    Nachrichtendienste, Hacker, Hackergruppen, kriminelle Organisationen, Terrorgruppen,
+    paramilitärische Kräfte, öffentliche Personen, Privatpersonen, Forschungsorganisationen,
+    internationale Organisationen (EU, NATO, UNO, EUROPOL, INTERPOL, WHO …). Jeden Akteur mit dem
+    genauesten passenden Tag.
+ 2. WAS – Ereignisse und Handlungen: Angriffe, Festnahmen, Sanktionen, Wahlen, Demonstrationen,
+    Staatsstreiche, Todesfälle, Unfälle, Souveränitätsverletzungen, Konflikte, militärische
+    Handlungen (Boden-, Luft-, Raketen-, Weltraumangriff, Verteidigung, Mobilmachung,
+    Waffenstillstand, Manöver, Truppenbewegung, Gefecht).
+ 3. WIE – Technik, Methoden, Werkzeuge: Angriffsarten (Ransomware, Phishing, DDoS, Brute Force,
+    Social Engineering, APT, Computervirus, Spyware), Sicherheitslücken, Datenlecks, Verschlüsselung,
+    Blockchain, Kryptowährung, KI, IoT, Cloud, Big Data, Betriebssysteme (Windows, Linux, Android,
+    iOS, macOS), Hardware, Netzwerke (Darknet, TOR), Rechenzentren, Server, Botnetze, Abwehr
+    (Firewall, Antivirenprogramm, VPN, Backups, Authentifizierung, Netzwerksegmentierung,
+    Pen-Testing, Fuzzing, Virtualisierung), Updates und Upgrades.
+ 4. WO – Geografie (Pflicht, Regeln unten).
+ 5. WARUM / Zusammenhang: Außen-, Innen-, Sicherheits-, Verteidigungs-, Militär- und Rüstungspolitik,
+    Diplomatie, Friedensbemühungen, Proliferation, Resilienz, Verteidigungsmaßnahmen,
+    Menschenrechte, Recht, Souveränität, AI Act, NIS, DSGVO.
+ 6. Infrastruktur und Branche: Energie, Finanzsystem, Gesundheitsversorgung, Kommunikation,
+    Konnektivität, kritische Infrastruktur, Kulturgüter, Lebensmittel, Medien, Wasser, Industrie
+    (Chemie, Erdöl), Transport und Luftfahrt, Bildungseinrichtungen, Lieferketten.
+ 7. Gesellschaft und Wirtschaft: Wirtschaft, Rüstungswirtschaft, Handel, Rohstoffe, Umwelt,
+    Extremismus, gesellschaftliche Spaltung, Gesundheit, Migration, Privatsphäre, Sport,
+    Kriminalität (Erpressung, Korruption, Piraterie, Schusswaffengebrauch, Hochverrat, Gewalt),
+    organisierte Kriminalität.
+ 8. Fahrzeuge und Plattformen: Bodenfahrzeuge (Eisenbahn, gepanzerte Fahrzeuge), Luftfahrzeuge
+    (Flugzeug, Hubschrauber), Raumfahrzeuge (Raumstation, Satellit), unbemannte Systeme (UAV, UGV,
+    USV, UUV), Wasserfahrzeuge (Schiff, U-Boot).
+ 9. Information und Dokument: Quellentyp, Dokumententyp, Informationsverschmutzung (Deepfake,
+    Desinformation, Faktencheck, Verschwörungstheorie, Propaganda, Zensur), Audio, Video, Werbung,
+    soziale Medien, Spionage, Strategie.
+10. Innovation und Zukunftstechnik: 3D-Druck, autonome Systeme, Biotechnologie, Biowerkstoffe,
+    erweiterte und virtuelle Realität, Human Enhancement, Luft-, Raumfahrt- und Weltraumtechnik,
+    Materialforschung, Mobilität, nachhaltige Technik, Nanotechnologie, Quantentechnologie, Robotik,
+    Simulation, Biometrie, militärische Innovation, Forschung und Entwicklung (öffentlich, privat,
+    militärisch), gesellschaftlicher Wandel (Dekarbonisierung, demografischer Wandel, Digitalisierung,
+    urbaner Wandel …).
+11. Krisenarten: atomarer Konflikt, Blackout, Bürgerkrieg, Cyberkrieg, Epidemie und Pandemie,
+    Grenzkonflikt, hybrider Krieg, Informationskrieg, inner- und zwischenstaatlicher Konflikt,
+    Klimawandel, Krieg, Naturkatastrophen, Religionskrieg, Terrorismus, Wirtschaftskonflikt und
+    -sanktionen, Wirtschaftskrise, Zivilschutz.
+
+Regeln:
+- Nur die untersten Tags: In der Liste stehen nur Tags ohne eigene Untertags. Die Beschreibung zeigt
+  den Pfad („Oberbegriff > Unterbegriff > Tag“). Die Oberbegriffe im Pfad sind selbst keine Tags und
+  dürfen nie vergeben werden; nutze sie nur, um zu verstehen, was ein Tag meint – „Hardware“ unter
+  „Cyber > Cyber Infrastruktur“ meint IT-Hardware, nicht den Baumarkt. Wird „Ransomware“ erwähnt,
+  ist „Ransomware“ der Tag – nicht „Schadsoftware“ oder „Cyberangriff“.
+- Belegt: Jeder Tag braucht eine Stelle in Titel oder Vorschau. Kannst du auf keine Formulierung
+  zeigen, lass ihn weg – kein „hat wahrscheinlich damit zu tun“, und nie einen Tag nur, um auf die
+  Anzahl zu kommen.
+- Erschlossenes ja, Erfundenes nein: „Polizei schaltet Geldwäsche-Plattform für Cyberkriminelle ab“
+  belegt Polizei, organisierte Kriminalität, ggf. Kryptowährung (wenn genannt), internationale
+  Zusammenarbeit (wenn mehrere Länder beteiligt sind) und die beteiligten Länder – auch wenn die
+  Wörter nicht wörtlich dastehen. „Atomarer Konflikt“ dagegen nicht, nur weil es um Sicherheit geht.
 {pflicht}
-- Den Rest füllst du mit inhaltlichen Tags aus allen Bereichen der Liste (z. B. Cyber, KriMiSi,
-  InnoTech, Allgemeine Tags): das Hauptthema, die eingesetzte oder betroffene Technik, Branchen,
-  Akteure, Folgen. Ein Tag passt, wenn der Artikel das Thema behandelt oder es ein erkennbarer Aspekt
-  des Artikels ist. Vergib nie einen Tag, der klar nicht zutrifft, nur um auf die Anzahl zu kommen.
-- Länder und Regionen: nur, wenn der Artikel von Ereignissen oder Akteuren dort handelt. Dass das
-  Medium aus einem Land stammt, macht den Artikel nicht zu einem Artikel über dieses Land.
+- Länder: nur, wenn der Artikel von Ereignissen oder Akteuren dort handelt. Dass das Medium aus einem
+  Land stammt, macht den Artikel nicht zu einem Artikel über dieses Land.
+
+Selbstkontrolle vor der Antwort (still, nicht ausgeben):
+- Alle elf Blickwinkel durchgegangen?
+- Jeder Tag durch Titel oder Vorschau belegt?
+- Struktur, Geografie, Dokumententyp, Quellentyp und Zeitraum vergeben – bei KI-Themen auch HSC-KI?
+- Jeder Name Zeichen für Zeichen wie in der Liste?
+- Weniger als {min_tags} Tags? Dann die übersprungenen Blickwinkel noch einmal.
 
 Form der Antwort:
 - Verwende ausschließlich Tags aus der Liste, Zeichen für Zeichen in der dort stehenden Schreibweise
@@ -242,7 +306,9 @@ def pflicht_regeln(blaetter: dict[str, str]) -> tuple[str, list[tuple[tuple[str,
     zeilen, ersatz = [], []
     immer = [vorhanden[t.lower()] for t in IMMER if t.lower() in vorhanden]
     if immer:
-        zeilen.append(f"  - immer: {', '.join(f'„{t}“' for t in immer)}")
+        zusatz = [f"„{vorhanden[t.lower()]}“ {wann}" for t, wann in STRUKTUR_ZUSATZ if t.lower() in vorhanden]
+        zeilen.append(f"  - Struktur – immer: {', '.join(f'„{t}“' for t in immer)}"
+                      + (f"; zusätzlich {' und '.join(zusatz)}" if zusatz else ""))
     for ast, hinweis, ersatz_tag in PFLICHT_AESTE:
         if any(im_ast(p[n], ast) for n in blaetter):
             zeilen.append(f"  - {' > '.join(ast)} > …: {hinweis.format(zeitraum=zeitraum or 'der laufende Zeitraum')}")

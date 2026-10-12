@@ -778,7 +778,7 @@ def merke_fuer_dashboard(state: dict, a: dict, gemeldet: bool) -> None:
     eintrag = {
         "url": a["url"], "titel": a["titel"][:300], "medium": a["medium"][:200], "teaser": a["teaser"][:1200],
         "autor": a["autor"][:200], "datum": a["datum"].isoformat() if a["datum"] else None,
-        "datum_art": a["datum_art"], "tags": [t[:80] for t in a["tags"][:30]], "gemeldet": gemeldet, "angeschaut": False,
+        "datum_art": a["datum_art"], "tags": [t[:80] for t in a["tags"][:40]], "gemeldet": gemeldet, "angeschaut": False,
         "weg": a.get("weg", "feed"),
         "gefunden_um": jetzt_utc().isoformat(),
     }
