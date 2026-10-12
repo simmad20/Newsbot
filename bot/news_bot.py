@@ -10,6 +10,7 @@ Aufruf:
     python news_bot.py            # läuft dauerhaft (empfohlen, mit Dashboard)
     python news_bot.py --einmal   # genau ein Durchlauf (z. B. für die Aufgabenplanung)
     python news_bot.py --test     # ein Durchlauf, nur Ausgabe in der Konsole, nichts senden/speichern
+    python news_bot.py --zuruecksetzen  # gesehene Artikel und Verlauf vergessen (Quellen, Tags, Geräte bleiben)
 """
 from __future__ import annotations
 
@@ -593,14 +594,16 @@ def lese_artikel(feed_inhalt: bytes, feed_url: str, jetzt: datetime, grenze: tim
 # --------------------------------------------------------------------------- Tags (per KI, siehe ki_tags.py)
 
 def vergib_tags(cfg: dict, state: dict, artikel: list[dict], tags: dict[str, str], test: bool) -> None:
-    """Setzt a["tags"] für alle Artikel. Klappt das nicht, bekommen sie a["tags_offen"] = True –
-    sie werden dann trotzdem gemeldet (auch bei nur_mit_tags), damit nichts verloren geht."""
+    """Setzt a["relevant"] (Themenfilter) und a["tags"] für alle Artikel. Klappt das nicht, bekommen sie
+    a["tags_offen"] = True – sie werden dann trotzdem gemeldet (auch bei nur_mit_tags), damit nichts verloren geht."""
+    llm = ki_tags.einstellungen(cfg)
+    zu_tun = bool(tags) or bool(llm["thema"])  # ohne Tags und ohne Themenfilter gibt es nichts zu entscheiden
     for a in artikel:
-        a["tags"], a["tags_offen"] = [], bool(tags)  # ohne Tags in tags.csv gibt es nichts zu vergeben
-    if not tags or not artikel:
+        a["relevant"], a["tags"], a["tags_offen"] = True, [], zu_tun
+    if not zu_tun or not artikel:
         return
     try:
-        ki_tags.TagVergabe(ki_tags.einstellungen(cfg), tags).vergib(artikel)
+        ki_tags.TagVergabe(llm, tags).vergib(artikel)
     except ki_tags.KiFehler as e:
         melde_fehler(cfg, state, "Tags (KI)", f"Tags konnten nicht vergeben werden: {e}", test, discord=False)
     except Exception as e:  # unerwartet – die Prüfung läuft trotzdem weiter
@@ -834,13 +837,21 @@ def durchlauf(cfg: dict, state: dict, test: bool = False) -> str:
             neue.append(a)
 
     neue.sort(key=lambda a: a["datum"] or jetzt)  # älteste zuerst
-    gesendet = verarbeitet = 0
+    gesendet = verarbeitet = aussortiert = 0
     for i, a in enumerate(neue):
         if gesendet >= cfg["max_meldungen_pro_lauf"]:
             log.info("Limit pro Lauf erreicht – restliche Artikel folgen beim nächsten Lauf.")
             break
         if "tags" not in a:  # Tags paketweise erst holen, wenn die Artikel an der Reihe sind –
             vergib_tags(cfg, state, neue[i:i + ki_tags.STAPEL], tags, test)  # was warten muss, kostet nichts
+        if not a["relevant"]:  # nicht zum Thema (z. B. Sport auf einer Nachrichtenseite) – merken, sonst nichts
+            if test:
+                print(f"[aussortiert] {a['medium']} | {a['titel']}")
+            else:
+                merke_gesehen(state, a)
+            aussortiert += 1
+            verarbeitet += 1
+            continue
         if cfg["nur_mit_tags"] and not a["tags"] and not a["tags_offen"]:
             if not test:
                 merke_gesehen(state, a)
@@ -862,7 +873,7 @@ def durchlauf(cfg: dict, state: dict, test: bool = False) -> str:
         gesendet += 1 if ergebnis else 0
         verarbeitet += 1
 
-    teile = [f"{len(neue)} neu", f"{gesendet} gemeldet"]
+    teile = [f"{len(neue)} neu"] + ([f"{aussortiert} nicht zum Thema"] if aussortiert else []) + [f"{gesendet} gemeldet"]
     if verarbeitet < len(neue):
         teile.append(f"{len(neue) - verarbeitet} folgen später")
     if fehlerhaft:
@@ -1189,13 +1200,37 @@ def hole_lock() -> bool:
     return True
 
 
+def zuruecksetzen() -> None:
+    """Neuanfang ohne Datenverlust: quellen.csv, tags.csv, config.toml und vapid_privat.pem bleiben unberührt,
+    aus state.json bleiben die Geräte für Benachrichtigungen, Pause/Intervall/Höchstalter und die gefundenen Wege."""
+    if not hole_lock():
+        sys.exit("Der Bot läuft gerade – erst beenden, dann zurücksetzen.")
+    alt = lade_state()
+    if STATE_DATEI.exists():
+        sicherung = STATE_DATEI.with_name("state.vorher.json")
+        STATE_DATEI.replace(sicherung)
+        log.info("Bisheriger Stand gesichert als %s.", sicherung.name)
+    neu = lade_state()  # leerer Stand
+    for k in ("push_abos", "feeds", "pausiert", "intervall_minuten", "max_alter_stunden", "config_stand"):
+        neu[k] = alt[k]
+    speichere_state(neu)
+    log.info("Zurückgesetzt: %d gesehene Artikel und %d Einträge im Verlauf vergessen; %d Gerät(e) für "
+             "Benachrichtigungen behalten. Beim nächsten Start übernimmt die Webseite den leeren Stand.",
+             len(alt["gesehen"]), len(alt["verlauf"]), len(alt["push_abos"]))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Kleiner News-Bot mit eigener Webseite")
     gruppe = parser.add_mutually_exclusive_group()
     gruppe.add_argument("--einmal", action="store_true", help="genau ein Durchlauf")
     gruppe.add_argument("--test", action="store_true", help="ein Durchlauf, nichts senden oder speichern")
+    gruppe.add_argument("--zuruecksetzen", action="store_true",
+                        help="gesehene Artikel, Verlauf und Fehler vergessen – Quellen, Tags, Geräte und Einstellungen bleiben")
     args = parser.parse_args()
     richte_logging_ein()
+    if args.zuruecksetzen:
+        zuruecksetzen()
+        return
     cfg = lade_config()
     listen.richte_ein(QUELLEN_DATEI, TAGS_DATEI, cfg.get("tags"))
     llm = ki_tags.einstellungen(cfg)
