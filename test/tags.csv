@@ -1,28 +1,6 @@
-﻿Tag;Schlagwort
-Cyberkriminalität;cyber*
-Cyberkriminalität;hacker*
-Cyberkriminalität;ransomware
-Cyberkriminalität;phishing
-Cyberkriminalität;botnetz*
-Cyberkriminalität;darknet
-Künstliche Intelligenz;KI
-Künstliche Intelligenz;chatgpt
-Künstliche Intelligenz;openai
-Künstliche Intelligenz;sprachmodell*
-Künstliche Intelligenz;deepfake*
-Künstliche Intelligenz;machine learning
-Datenschutz;datenschutz*
-Datenschutz;dsgvo
-Datenschutz;tracking
-Datenschutz;überwachung*
-Energie;strompreis*
-Energie;photovoltaik
-Energie;windkraft
-Energie;energiewende
-Energie;gaspreis*
-Österreich;österreich*
-Österreich;wien*
-Österreich;graz*
-Österreich;linz
-Österreich;salzburg
-Österreich;tirol*
+﻿Tag;Beschreibung
+Cyberkriminalität;Angriffe auf Computer und Netze, Ransomware, Phishing, Datendiebstahl
+Datenschutz;DSGVO, Datenlecks, Tracking und Überwachung von Personen
+Künstliche Intelligenz;KI-Modelle, ihre Anwendungen und ihre Regulierung
+Wetter;Unwetter, Hitze, Hochwasser – nicht: Klimapolitik
+Österreich;

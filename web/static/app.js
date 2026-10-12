@@ -25,8 +25,8 @@ const WERKTAGE = TAGE.slice(0, 5).map(([k]) => k);
 const fmtWochentag = new Intl.DateTimeFormat("de-AT", { timeZone: ZONE, weekday: "long" });
 const heutigerTag = () => fmtWochentag.format(new Date()).toLowerCase();
 // Gleiche Regeln wie auf dem Server und im Bot (die prüfen trotzdem noch einmal selbst)
-const TAG_MUSTER = /^[\p{L}\p{N}][\p{L}\p{N}_ .&\/'+-]{0,39}$/u;
-const WORT_MUSTER = /^[\p{L}\p{N}][\p{L}\p{N}_ .&\/'+-]{0,58}\*?$/u;
+const TAG_MUSTER = /^(?:[\p{L}\p{N}]|[[(])[\p{L}\p{N}_ .,:&\/'+()[\]-]{0,79}$/u;
+const MAX_BESCHREIBUNG = 300;
 const ZUSTAND_NAMEN = { offen: "wartet auf den Bot", abgeholt: "wird ausgeführt" };
 
 let daten = null;
@@ -104,18 +104,16 @@ function tageText(tage) {
 
 function befehlName(b) {
   const urls = b.urls || [];
-  const woerter = b.woerter || [];
   const was = urls.length === 1 ? kurzUrl(urls[0]) : anzahl(urls.length, "Quelle", "Quellen");
   switch (b.aktion) {
     case "intervall": return `Intervall auf ${b.wert} Min.`;
     case "max_alter": return `Artikel bis ${alterText(b.wert)} alt melden`;
     case "quellen_importieren": return `Import: ${anzahl(b.anzahl_quellen || 0, "Eintrag", "Einträge")} für Quellen`;
-    case "tags_importieren":
-      return `Import: ${anzahl(b.anzahl_tags || 0, "Tag", "Tags")} mit ${anzahl(b.anzahl_woerter || 0, "Schlagwort", "Schlagwörtern")}`;
+    case "tags_importieren": return `Import: ${anzahl(b.anzahl_tags || 0, "Tag", "Tags")}`;
     case "quellen_hinzufuegen": return `${was} für ${tageText(b.tage || [])} hinzufügen`;
     case "quellen_entfernen": return `${was} bei ${tageText(b.tage || [])} entfernen`;
-    case "tag_hinzufuegen": return `Tag „${b.tag}“: ${woerter.join(", ")} hinzufügen`;
-    case "tag_entfernen": return woerter.length ? `Tag „${b.tag}“: ${woerter.join(", ")} entfernen` : `Tag „${b.tag}“ löschen`;
+    case "tag_hinzufuegen": return `Tag „${b.tag}“ speichern`;
+    case "tag_entfernen": return `Tag „${b.tag}“ löschen`;
     default: return AKTIONS_NAMEN[b.aktion] || b.aktion;
   }
 }

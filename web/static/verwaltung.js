@@ -6,8 +6,7 @@
 
 const MAX_PRO_BEFEHL = 50;        // darüber wird automatisch als Import geschickt
 const MAX_QUELLEN = 700;
-const MAX_TAGS = 100;
-const MAX_WOERTER_PRO_TAG = 100;
+const MAX_TAGS = 1000;
 const MAX_DATEI_BYTES = 2 * 1024 * 1024;
 const MAX_DATEI_ZEILEN = 20000;
 const VERBOTENE_URL_ZEICHEN = /[\s\\"<>`{}|^]/;
@@ -22,7 +21,6 @@ const TAG_KUERZEL = { mo: "montag", di: "dienstag", mi: "mittwoch", do: "donners
 
 const wartetAuf = { quellen: null, tags: null };  // Befehl, dessen Ergebnis wir anzeigen wollen
 const letzteAnsicht = { quellen: "", tags: "" };  // nur neu zeichnen, wenn sich etwas geändert hat
-const kartenEntwuerfe = new Map();                // angefangene Eingaben in Tag-Karten überleben das Neuzeichnen
 
 // ---------------------------------------------------------------- Kleinteile
 
@@ -34,6 +32,7 @@ const ICON = {
   x: ["M18 6 6 18", "m6 6 12 12"],
   extern: ["M15 3h6v6", "M10 14 21 3", "M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"],
   pfeil: ["m6 9 6 6 6-6"],
+  stift: ["M12 20h9", "M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"],
 };
 
 function symbol(pfade, groesse = 18) {
@@ -248,7 +247,7 @@ function tagsModell() {
   const karten = [];
   const nachName = new Map();
   for (const t of daten.listen?.tags || []) {
-    const k = { name: t.name, woerter: t.woerter.map((w) => ({ w, zustand: "da" })), wartend: false, geht: false };
+    const k = { name: t.name, beschreibung: t.beschreibung || "", wartend: false, aendert: false, geht: false };
     karten.push(k);
     nachName.set(klein(t.name), k);
   }
@@ -256,17 +255,27 @@ function tagsModell() {
     let k = nachName.get(klein(b.tag));
     if (b.aktion === "tag_hinzufuegen") {
       if (!k) {
-        k = { name: b.tag, woerter: [], wartend: true, geht: false };
+        k = { name: b.tag, beschreibung: "", wartend: true, aendert: false, geht: false };
         karten.push(k);
         nachName.set(klein(b.tag), k);
+      } else {
+        k.aendert = true;
       }
-      for (const w of b.woerter) if (!k.woerter.some((x) => klein(x.w) === klein(w))) k.woerter.push({ w, zustand: "kommt" });
+      k.beschreibung = b.beschreibung || "";
     } else if (k) {
-      if (!b.woerter.length) k.geht = true;
-      for (const x of k.woerter) if (b.woerter.some((w) => klein(w) === klein(x.w))) x.zustand = "geht";
+      k.geht = true;
     }
   }
   return karten;
+}
+
+function kiHinweis() {
+  const status = daten.bot.status;
+  if (!status) return "";
+  if (!("ki_modell" in status)) return " · Bot noch auf alter Version – bitte aktualisieren";
+  return status.ki_modell
+    ? ` · ${status.ki_modell} wählt pro Artikel die passenden Tags`
+    : " · Kein API-Schlüssel: der Bot vergibt gerade keine Tags (config.toml → [llm] api_key)";
 }
 
 function zeichneTags() {
@@ -275,16 +284,15 @@ function zeichneTags() {
   meldeErgebnis("tags");
   const suche = klein($("tags-suche").value.trim());
   const offen = offeneBefehle(["tag_hinzufuegen", "tag_entfernen", "tags_importieren"]);
-  const schluessel = JSON.stringify([tags, offen.map((b) => b.id), suche, daten.bot.online]);
+  const schluessel = JSON.stringify([tags, offen.map((b) => b.id), suche, daten.bot.online, daten.bot.status?.ki_modell]);
   if (schluessel === letzteAnsicht.tags) return;
   letzteAnsicht.tags = schluessel;
 
   $("tag-namen").replaceChildren(...(tags || []).map((t) => el("option", { value: t.name })));
   const modell = tagsModell();
-  const woerterGesamt = (tags || []).reduce((n, t) => n + t.woerter.length, 0);
   $("tags-info").textContent = !tags
     ? "Die Tags erscheinen, sobald der Bot verbunden ist. Anlegen kannst du trotzdem schon."
-    : `${anzahl(tags.length, "Tag", "Tags")} mit ${anzahl(woerterGesamt, "Schlagwort", "Schlagwörtern")} · gelten ab der nächsten Prüfung`
+    : `${anzahl(tags.length, "Tag", "Tags")}${kiHinweis()} · Änderungen gelten ab der nächsten Prüfung`
       + (!daten.bot.online && offen.length ? " · Gestrichelte Änderungen werden übertragen, sobald der Bot läuft." : "");
   $("tags-ausstehend").replaceChildren(...[importHinweis(offen.filter((b) => b.aktion === "tags_importieren"))].filter(Boolean));
 
@@ -293,94 +301,51 @@ function zeichneTags() {
   if (!modell.length) {
     leer.replaceChildren(
       el("p", { class: "leer-titel" }, "Noch keine Tags"),
-      el("p", {}, "Tags markieren Artikel, deren Titel oder Vorschau eines ihrer Schlagwörter enthält."));
+      el("p", {}, "Lege Tags an oder importiere deinen Tag-Baum. Die KI liest jeden neuen Artikel und wählt die passenden Tags aus dieser Liste."));
   }
-  const sichtbare = modell.filter((k) => !suche || klein(k.name).includes(suche) || k.woerter.some((x) => klein(x.w).includes(suche)));
+  const sichtbare = modell.filter((k) => !suche || klein(k.name).includes(suche) || klein(k.beschreibung).includes(suche));
   const raster = $("tags-karten");
   zeichneErhaltend(raster, () => raster.replaceChildren(...(sichtbare.length || !modell.length
-    ? sichtbare.map((k) => tagKarte(k, suche))
+    ? sichtbare.map(tagKarte)
     : [el("p", { class: "keine-treffer" }, "Kein Tag passt zur Suche.")])));
 }
 
-function tagKarte(k, suche) {
+function tagKarte(k) {
   const schluessel = klein(k.name);
-  const chips = k.woerter.map(({ w, zustand }) => {
-    const text = w.endsWith("*")
-      ? [w.slice(0, -1), el("span", { class: "stern", title: "Wortanfang – findet auch längere Wörter" }, "*")]
-      : [w];
-    const treffer = suche && klein(w).includes(suche) ? " treffer" : "";
-    return el("li", { class: `wort ${zustand}${treffer}` }, ...text,
-      zustand === "da" && !k.geht
-        ? el("button", { type: "button", class: "wort-weg", title: "Entfernen", "aria-label": `${w} aus ${k.name} entfernen`,
-          "data-tag": k.name, "data-wort": w, "data-fokus": `w|${schluessel}|${klein(w)}` }, symbol(ICON.x, 14))
-        : null);
-  });
-
-  const eingabe = el("input", { type: "text", class: "karte-feld", placeholder: "Schlagwort hinzufügen", maxlength: "600",
-    autocomplete: "off", spellcheck: "false", autocapitalize: "off", "aria-label": `Schlagwort zu ${k.name} hinzufügen`,
-    "data-tag": k.name, "data-fokus": `e|${schluessel}` });
-  eingabe.value = kartenEntwuerfe.get(schluessel) || "";
-
   let rechts;
-  if (k.geht) rechts = el("span", { class: "karte-status" }, "wird gelöscht");
-  else if (k.wartend) rechts = el("span", { class: "karte-status" }, "wird angelegt");
-  else rechts = el("button", { type: "button", class: "symbol-knopf gefahr", title: "Tag löschen", "aria-label": `Tag ${k.name} löschen`,
-    "data-loeschen": k.name, "data-fokus": `l|${schluessel}` }, symbol(ICON.muell));
-
-  return el("article", { class: `tag-karte${k.wartend ? " wartend" : ""}${k.geht ? " geht" : ""}`, "aria-label": `Tag ${k.name}` },
-    el("header", { class: "karte-kopf" },
-      el("h3", { class: "karte-titel" }, k.name),
-      el("span", { class: "zahl" }, String(k.woerter.length)),
-      rechts),
-    k.woerter.length ? el("ul", { class: "woerter" }, ...chips) : el("p", { class: "leise klein" }, "Keine Schlagwörter."),
-    k.geht ? null : el("form", { class: "karte-eingabe", "data-tag": k.name, novalidate: "" },
-      eingabe,
-      el("button", { type: "submit", class: "symbol-knopf", title: "Hinzufügen", "aria-label": `Zu ${k.name} hinzufügen` }, symbol(ICON.plus))),
-    el("p", { class: "karte-fehler", role: "alert" }));
-}
-
-/** Text in Schlagwörter zerlegen. Gibt [gültige, ungültige] zurück. */
-function zerlegeWoerter(text) {
-  const teile = [...new Set(String(text).split(/[,;\n]+/).map(einRaum).filter(Boolean))];
-  return [teile.filter((w) => WORT_MUSTER.test(w)), teile.filter((w) => !WORT_MUSTER.test(w))];
-}
-
-const WORT_REGEL = "nur Buchstaben, Ziffern, Leerzeichen, - . & / ' + und * am Ende; am Anfang ein Buchstabe oder eine Ziffer";
-
-function tagBefehl(name, woerter) {
-  // Mehr als 50 Wörter auf einmal gehen als Import – dafür gilt die 50er-Grenze nicht.
-  return woerter.length <= MAX_PRO_BEFEHL
-    ? { aktion: "tag_hinzufuegen", tag: name, woerter }
-    : { aktion: "tags_importieren", tags: [{ name, woerter: woerter.slice(0, MAX_WOERTER_PRO_TAG) }] };
-}
-
-$("tags-karten").addEventListener("submit", async (e) => {
-  const form = e.target.closest("form.karte-eingabe");
-  if (!form) return;
-  e.preventDefault();
-  const feld = form.querySelector("input");
-  const fehler = form.parentElement.querySelector(".karte-fehler");
-  const [gute, falsche] = zerlegeWoerter(feld.value);
-  fehler.textContent = falsche.length ? `Nicht erlaubt: ${falsche.slice(0, 3).join(", ")} – ${WORT_REGEL}.` : "";
-  if (falsche.length || !gute.length) return;
-  if (await listenBefehl("tags", tagBefehl(form.dataset.tag, gute), form.querySelector("button"))) {
-    kartenEntwuerfe.delete(klein(form.dataset.tag));
-    feld.value = "";
+  if (k.geht) rechts = [el("span", { class: "karte-status" }, "wird gelöscht")];
+  else if (k.wartend) rechts = [el("span", { class: "karte-status" }, "wird angelegt")];
+  else if (k.aendert) rechts = [el("span", { class: "karte-status" }, "wird geändert")];
+  else {
+    rechts = [
+      el("button", { type: "button", class: "symbol-knopf karte-rechts", title: "Beschreibung bearbeiten", "aria-label": `Tag ${k.name} bearbeiten`,
+        "data-bearbeiten": k.name, "data-fokus": `b|${schluessel}` }, symbol(ICON.stift)),
+      el("button", { type: "button", class: "symbol-knopf gefahr", title: "Tag löschen", "aria-label": `Tag ${k.name} löschen`,
+        "data-loeschen": k.name, "data-fokus": `l|${schluessel}` }, symbol(ICON.muell)),
+    ];
   }
-});
+  return el("article", { class: `tag-karte${k.wartend || k.aendert ? " wartend" : ""}${k.geht ? " geht" : ""}`, "aria-label": `Tag ${k.name}` },
+    el("header", { class: "karte-kopf" }, el("h3", { class: "karte-titel" }, k.name), ...rechts),
+    k.beschreibung
+      ? el("p", { class: "karte-beschreibung" }, k.beschreibung)
+      : el("p", { class: "karte-beschreibung leise" }, "Ohne Beschreibung – die KI richtet sich nach dem Namen."));
+}
 
-$("tags-karten").addEventListener("input", (e) => {
-  if (e.target.matches("input.karte-feld")) kartenEntwuerfe.set(klein(e.target.dataset.tag), e.target.value);
-});
+/** Gleiche Regeln wie Server und Bot: Leerraum zusammenfassen, = + - @ am Anfang entfernen. */
+function pruefeBeschreibung(text) {
+  const t = einRaum(String(text ?? "")).replace(/^[=+\-@ ]+/, "");
+  return t.length <= MAX_BESCHREIBUNG && !/[\p{C}\p{Zl}\p{Zp}]/u.test(t) ? t : null;
+}
 
 $("tags-karten").addEventListener("click", (e) => {
   const knopf = e.target.closest("button");
   if (!knopf) return;
   if (knopf.dataset.loeschen) {
-    if (!confirm(`Tag „${knopf.dataset.loeschen}“ mit allen Schlagwörtern löschen?`)) return;
-    listenBefehl("tags", { aktion: "tag_entfernen", tag: knopf.dataset.loeschen, woerter: [] }, knopf);
-  } else if (knopf.dataset.wort) {
-    listenBefehl("tags", { aktion: "tag_entfernen", tag: knopf.dataset.tag, woerter: [knopf.dataset.wort] }, knopf);
+    if (!confirm(`Tag „${knopf.dataset.loeschen}“ löschen?`)) return;
+    listenBefehl("tags", { aktion: "tag_entfernen", tag: knopf.dataset.loeschen }, knopf);
+  } else if (knopf.dataset.bearbeiten) {
+    const t = (daten.listen?.tags || []).find((x) => x.name === knopf.dataset.bearbeiten);
+    oeffneTagDialog(knopf.dataset.bearbeiten, t ? t.beschreibung : "");
   }
 });
 
@@ -439,74 +404,38 @@ $("quellen-form").addEventListener("submit", async (e) => {
   }
 });
 
-// ---- Neuer Tag (Schlagwörter als Chips)
+// ---- Tag anlegen oder bearbeiten
 
-const neueWoerter = [];
-
-function zeichneTagChips() {
-  $("tag-chip-liste").replaceChildren(...neueWoerter.map((w, i) =>
-    el("li", { class: "wort da" }, w,
-      el("button", { type: "button", class: "wort-weg", title: "Entfernen", "aria-label": `${w} entfernen`, "data-index": String(i) },
-        symbol(ICON.x, 14)))));
+function oeffneTagDialog(name, beschreibung) {
+  const bearbeiten = name !== null;
+  $("dialog-tag-titel").textContent = bearbeiten ? "Tag bearbeiten" : "Neuer Tag";
+  $("tag-name").value = bearbeiten ? name : "";
+  $("tag-name").readOnly = bearbeiten;
+  $("tag-beschreibung").value = beschreibung || "";
+  $("tag-name-hinweis").textContent = "";
+  oeffneDialog($("dialog-tag"), bearbeiten ? $("tag-beschreibung") : $("tag-name"));
 }
 
-/** Übernimmt vollständige Wörter aus dem Eingabefeld; Ungültiges bleibt zum Korrigieren stehen. */
-function uebernimmWoerter(alles) {
-  const feld = $("tag-wort-eingabe");
-  const teile = feld.value.split(/[,;\n]/);
-  const rest = alles ? "" : teile.pop();
-  const [gute, falsche] = zerlegeWoerter(teile.join(","));
-  for (const w of gute) if (!neueWoerter.some((x) => klein(x) === klein(w))) neueWoerter.push(w);
-  feld.value = [...falsche, rest].filter(Boolean).join(", ");
-  $("tag-fehler").textContent = falsche.length ? `Nicht erlaubt: ${falsche.slice(0, 3).join(", ")} – ${WORT_REGEL}.` : "";
-  zeichneTagChips();
-  return falsche.length === 0;
-}
-
-$("tag-wort-eingabe").addEventListener("keydown", (e) => {
-  if (e.key === "Enter" || e.key === ",") {
-    e.preventDefault();
-    uebernimmWoerter(true);
-  } else if (e.key === "Backspace" && !e.target.value && neueWoerter.length) {
-    neueWoerter.pop();
-    zeichneTagChips();
-  }
-});
-$("tag-wort-eingabe").addEventListener("input", (e) => { if (/[,;\n]/.test(e.target.value)) uebernimmWoerter(false); });
-$("tag-chip-liste").addEventListener("click", (e) => {
-  const knopf = e.target.closest("button[data-index]");
-  if (!knopf) return;
-  neueWoerter.splice(Number(knopf.dataset.index), 1);
-  zeichneTagChips();
-  $("tag-wort-eingabe").focus();
-});
 $("tag-name").addEventListener("input", () => {
   const name = einRaum($("tag-name").value);
   const vorhanden = (daten?.listen?.tags || []).find((t) => klein(t.name) === klein(name));
-  $("tag-name-hinweis").textContent = vorhanden ? `„${vorhanden.name}“ gibt es schon – die Schlagwörter werden dort ergänzt.` : "";
+  $("tag-name-hinweis").textContent = vorhanden ? `„${vorhanden.name}“ gibt es schon – die Beschreibung wird ersetzt.` : "";
 });
 
-$("tag-neu").addEventListener("click", () => {
-  neueWoerter.length = 0;
-  zeichneTagChips();
-  $("tag-name").value = "";
-  $("tag-wort-eingabe").value = "";
-  $("tag-name-hinweis").textContent = "";
-  oeffneDialog($("dialog-tag"), $("tag-name"));
-});
+$("tag-neu").addEventListener("click", () => oeffneTagDialog(null, ""));
 
 $("tag-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const fehler = $("tag-fehler");
-  if (!uebernimmWoerter(true)) return;
   const name = einRaum($("tag-name").value);
+  const beschreibung = pruefeBeschreibung($("tag-beschreibung").value);
   let problem = "";
   if (!name) problem = "Bitte einen Namen eintragen.";
-  else if (!TAG_MUSTER.test(name)) problem = "Name: nur Buchstaben, Ziffern, Leerzeichen und - . & / ' + (höchstens 40 Zeichen, am Anfang ein Buchstabe oder eine Ziffer).";
-  else if (!neueWoerter.length) problem = "Bitte mindestens ein Schlagwort eintragen.";
+  else if (!TAG_MUSTER.test(name)) problem = "Name: höchstens 80 Zeichen – Buchstaben, Ziffern, Leerzeichen und - . , : & / ' + ( ) [ ]; am Anfang ein Buchstabe, eine Ziffer oder eine Klammer.";
+  else if (beschreibung === null) problem = `Beschreibung: höchstens ${MAX_BESCHREIBUNG} Zeichen, ohne Steuerzeichen.`;
   fehler.textContent = problem;
   if (problem) return;
-  if (await listenBefehl("tags", tagBefehl(name, [...neueWoerter]), e.submitter)) $("dialog-tag").close();
+  if (await listenBefehl("tags", { aktion: "tag_hinzufuegen", tag: name, beschreibung }, e.submitter)) $("dialog-tag").close();
   else fehler.textContent = $("tags-rueck").textContent;
 });
 
@@ -523,10 +452,11 @@ const FORMATE = {
     ["JSON als Liste", '[\n  {"wochentag": "montag", "url": "derstandard.at"},\n  {"wochentag": "dienstag", "url": "heise.de"}\n]'],
   ],
   tags: [
-    ["CSV, eine Zeile pro Schlagwort (wie tags.csv)", "Tag;Schlagwort\nCyberkriminalität;cyber*\nCyberkriminalität;ransomware\nÖsterreich;wien*"],
-    ["CSV, alle Schlagwörter in einer Zeile", "Tag;Schlagwörter\nCyberkriminalität;cyber*, ransomware, phishing\nÖsterreich;wien*;graz*"],
-    ["JSON nach Tags", '{\n  "Cyberkriminalität": ["cyber*", "ransomware"],\n  "Österreich": ["wien*"]\n}'],
-    ["JSON als Liste", '[\n  {"name": "Österreich", "woerter": ["wien*", "graz*"]}\n]'],
+    ["CSV, eine Zeile pro Tag (wie tags.csv) – Beschreibung freiwillig", "Tag;Beschreibung\nRansomware;Erpressung mit Schadsoftware\nÖsterreich;"],
+    ["CSV aus dem Tag-Baum (tags-import/tags.csv) – der Pfad wird zur Beschreibung", "Tag;Pfad\nCyber;Cyber\nBauteil;Cyber > Cyber Infrastruktur > Hardware > Bauteil"],
+    ["JSON-Baum (tags-import/tags.json)", '[\n  {"tag": "Cyber", "untertags": [\n    {"tag": "Cyber Security", "untertags": []}\n  ]}\n]'],
+    ["JSON als Liste", '[\n  {"name": "Ransomware", "beschreibung": "Erpressung mit Schadsoftware"},\n  "Österreich"\n]'],
+    ["JSON nach Tags", '{\n  "Ransomware": "Erpressung mit Schadsoftware",\n  "Österreich": ""\n}'],
   ],
 };
 
@@ -603,28 +533,41 @@ function quellenRohdaten(name, text) {
   return roh;
 }
 
-/** Liefert [[tag-text, [wort-text, …]], …] aus jedem unterstützten Format. */
+/** Liefert [[tag-text, beschreibung-text], …] aus jedem unterstützten Format.
+ *  Schlagwörter aus Dateien im alten Format werden ignoriert – die Tags vergibt jetzt die KI. */
 function tagsRohdaten(name, text) {
   const roh = [];
-  const woerterAus = (wert) => alsListe(wert).flatMap((w) => (typeof w === "string" ? w.split(/[,;]/) : [w]));
+  const textAus = (wert) => (typeof wert === "string" ? wert : "");
+  const baum = (knoten, pfad) => {  // [{"tag": …, "untertags": […]}] → Pfad als Beschreibung
+    for (const k of alsListe(knoten)) {
+      if (roh.length >= MAX_DATEI_ZEILEN) return;
+      if (!istObjekt(k)) { roh.push([k, ""]); continue; }
+      const weg = [...pfad, String(k.tag ?? k.name ?? "")];
+      roh.push([k.tag ?? k.name, weg.length > 1 ? weg.join(" > ") : textAus(k.beschreibung)]);
+      baum(k.untertags ?? k.kinder ?? k.children ?? [], weg);
+    }
+  };
   if (istJson(name, text)) {
     let d = liesJson(text);
     if (istObjekt(d) && "tags" in d) d = d.tags;
-    if (Array.isArray(d)) {
+    if (Array.isArray(d) && d.some((e) => istObjekt(e) && ("untertags" in e || "children" in e || "kinder" in e))) {
+      baum(d, []);
+    } else if (Array.isArray(d)) {
       for (const e of d.slice(0, MAX_DATEI_ZEILEN)) {
-        if (istObjekt(e)) roh.push([e.name ?? e.tag, woerterAus(e.woerter ?? e.schlagwoerter ?? e["schlagwörter"] ?? e.keywords ?? e.words)]);
-        else roh.push([e, []]);
+        if (istObjekt(e)) roh.push([e.name ?? e.tag, textAus(e.beschreibung ?? e.pfad ?? e.description)]);
+        else roh.push([e, ""]);
       }
     } else if (istObjekt(d)) {
-      for (const [tag, woerter] of Object.entries(d)) roh.push([tag, woerterAus(woerter)]);
+      for (const [tag, wert] of Object.entries(d)) roh.push([tag, textAus(wert)]);  // alte Form {Tag: [Schlagwörter]} → ohne Beschreibung
     } else {
       throw new Error("Unbekanntes JSON-Format – siehe „Welche Formate werden erkannt?“.");
     }
     return roh;
   }
   const zeilen = liesCsv(text);
-  const start = zeilen.length && /^(tag|name)$/i.test(zeilen[0][0]) ? 1 : 0;
-  for (const z of zeilen.slice(start)) roh.push([z[0], woerterAus(z.slice(1))]);
+  const kopf = zeilen.length && /^(tag|name)$/i.test(zeilen[0][0]) ? zeilen[0] : null;
+  const altesFormat = kopf && /^schlagw/i.test(kopf[1] || "");  // Tag;Schlagwort → Schlagwörter weglassen
+  for (const z of zeilen.slice(kopf ? 1 : 0)) roh.push([z[0], altesFormat ? "" : z[1] || ""]);
   return roh;
 }
 
@@ -668,52 +611,58 @@ function bereiteQuellenVor(roh) {
   };
 }
 
+/** Zwei Beschreibungen desselben Tags verbinden (gleicher Name an zwei Stellen im Tag-Baum). */
+function verbinde(alt, neu) {
+  if (!neu || klein(alt).includes(klein(neu))) return alt;
+  if (!alt) return neu;
+  const zusammen = `${alt} | ${neu}`;
+  return zusammen.length <= MAX_BESCHREIBUNG ? zusammen : alt;
+}
+
 function bereiteTagsVor(roh) {
   const fehler = [];
-  const tags = new Map();  // klein(name) → { name, woerter: Map(klein → wort) }
+  const tags = new Map();  // klein(name) → { name, beschreibung }
   let zuViel = 0;
-  for (const [nameText, woerter] of roh) {
+  for (const [nameText, beschreibungText] of roh) {
     const name = typeof nameText === "string" ? einRaum(nameText) : "";
+    let beschreibung = pruefeBeschreibung(beschreibungText);
     if (!TAG_MUSTER.test(name)) {
       fehler.push([zeigeText(nameText), "Tag-Name nicht erlaubt"]);
       continue;
     }
-    if (!tags.has(klein(name))) {
-      if (tags.size >= MAX_TAGS) { zuViel += woerter.length; continue; }
-      tags.set(klein(name), { name, woerter: new Map() });
+    if (beschreibung === null) {
+      fehler.push([`${name} · ${zeigeText(beschreibungText)}`, "Beschreibung nicht erlaubt"]);
+      continue;
     }
+    if (klein(beschreibung) === klein(name)) beschreibung = "";  // oberste Ebene im Tag-Baum: Pfad = Name
     const t = tags.get(klein(name));
-    for (const w of woerter) {
-      const wort = typeof w === "string" ? einRaum(w) : "";
-      if (!wort) continue;
-      if (!WORT_MUSTER.test(wort)) fehler.push([`${name} · ${zeigeText(w)}`, "Schlagwort nicht erlaubt"]);
-      else if (t.woerter.size >= MAX_WOERTER_PRO_TAG) zuViel++;
-      else t.woerter.set(klein(wort), wort);
-    }
+    if (t) t.beschreibung = verbinde(t.beschreibung, beschreibung);
+    else if (tags.size >= MAX_TAGS) zuViel++;
+    else tags.set(klein(name), { name, beschreibung });
   }
-  const bekannt = new Map((daten?.listen?.tags || []).map((t) => [klein(t.name), new Set(t.woerter.map(klein))]));
-  const senden = [];
-  let erkannt = 0;
+  const bekannt = new Map((daten?.listen?.tags || []).map((t) => [klein(t.name), t.beschreibung || ""]));
+  const neu = [];
+  const geaendert = [];
   let vorhanden = 0;
   for (const t of tags.values()) {
-    erkannt += t.woerter.size;
-    const alt = bekannt.get(klein(t.name)) || new Set();
-    const neu = [...t.woerter.values()].filter((w) => !alt.has(klein(w)));
-    vorhanden += t.woerter.size - neu.length;
-    if (neu.length) senden.push({ name: t.name, woerter: neu });
+    if (!bekannt.has(klein(t.name))) neu.push(t);
+    else if (t.beschreibung && t.beschreibung !== bekannt.get(klein(t.name))) geaendert.push(t);
+    else vorhanden++;
   }
-  const neueWoerterZahl = senden.reduce((n, t) => n + t.woerter.length, 0);
-  const neueTags = senden.filter((t) => !bekannt.has(klein(t.name)));
+  const platz = Math.max(0, MAX_TAGS - bekannt.size);
+  const senden = [...neu.slice(0, platz), ...geaendert];
+  zuViel += neu.length - Math.min(neu.length, platz);
+  const neuGesendet = Math.min(neu.length, platz);
   return {
     befehl: senden.length ? { aktion: "tags_importieren", tags: senden } : null,
-    knopf: `${anzahl(neueWoerterZahl, "Schlagwort", "Schlagwörter")} importieren`,
-    zahlen: [[erkannt, "Schlagwörter erkannt"], [neueWoerterZahl, "neu"], [neueTags.length, neueTags.length === 1 ? "neuer Tag" : "neue Tags"],
+    knopf: `${anzahl(senden.length, "Tag", "Tags")} importieren`,
+    zahlen: [[tags.size, "Tags erkannt"], [neuGesendet, "neu"], [geaendert.length, "Beschreibung geändert"],
       [vorhanden, "schon vorhanden"], [zuViel, "über dem Limit"], [fehler.length, "übersprungen"]],
     fehler,
-    details: senden.length ? el("ul", { class: "vorschau-chips", "aria-label": "Tags mit neuen Schlagwörtern" },
-      ...senden.slice(0, 30).map((t) => el("li", {}, el("strong", {}, t.name), ` +${t.woerter.length}`)),
+    details: senden.length ? el("ul", { class: "vorschau-chips", "aria-label": "Neue oder geänderte Tags" },
+      ...senden.slice(0, 30).map((t) => el("li", { title: t.beschreibung }, el("strong", {}, t.name))),
       senden.length > 30 ? el("li", {}, `… ${senden.length - 30} weitere`) : null) : null,
-    hinweis: daten?.listen ? "" : "Der Bot ist noch nicht verbunden – vorhandene Schlagwörter erkennt er beim Eintragen selbst.",
+    hinweis: daten?.listen ? "" : "Der Bot ist noch nicht verbunden – vorhandene Tags erkennt er beim Eintragen selbst.",
   };
 }
 

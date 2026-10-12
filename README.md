@@ -1,6 +1,6 @@
 # News-Bot mit eigener Webseite
 
-Ein kleiner Nachrichten-Bot für den Eigengebrauch – komplett kostenlos, ohne Discord.
+Ein kleiner Nachrichten-Bot für den Eigengebrauch – ohne Discord, die Tags vergibt eine KI (DeepSeek oder Claude).
 
 ```
    Dein PC                                   Render (kostenlos)
@@ -12,10 +12,11 @@ Ein kleiner Nachrichten-Bot für den Eigengebrauch – komplett kostenlos, ohne 
  │ • schickt Benach-    │ ◄────────────── │ • Knöpfe für Befehle     │
  │   richtigungen       │  Befehle, Geräte└──────────────────────────┘
  │ • state.json         │
- └──────────┬───────────┘
-            │ verschlüsselte Benachrichtigung
-            ▼
-   Push-Dienst deines Browsers (Google, Apple, Mozilla, Microsoft) ──► dein Handy / PC
+ └───┬──────────────┬───┘
+     │ Titel +      │ verschlüsselte Benachrichtigung
+     │ Vorschau     ▼
+     ▼            Push-Dienst deines Browsers (Google, Apple, Mozilla, Microsoft) ──► Handy / PC
+   KI-API (DeepSeek oder Claude): wählt passende Tags aus tags.csv
 ```
 
 **Warum so aufgeteilt?** Kostenlose Render-Dienste schlafen nach 15 Minuten ohne Besuch ein und
@@ -24,7 +25,9 @@ alle Daten. Die Render-Seite ist Anzeige und Fernbedienung. Die Benachrichtigung
 direkt an den Push-Dienst deines Browsers – das funktioniert also auch, wenn die Render-Seite
 gerade schläft.
 
-Kosten: **0 €** (Render Free, GitHub Free). Discord ist optional.
+Kosten: **0 €** für Render und GitHub. Die Tags vergibt eine KI über ihre API (DeepSeek oder Claude) –
+die kostet pro Anfrage ein wenig (siehe „Tags per KI“). Ohne API-Schlüssel läuft alles, nur ohne Tags.
+Discord ist optional.
 
 ---
 
@@ -41,7 +44,19 @@ Kosten: **0 €** (Render Free, GitHub Free). Discord ist optional.
 3. **Quellen und Tags:** Beim ersten Start legt der Bot `bot/quellen.csv` und `bot/tags.csv` an.
    Am einfachsten trägst du später alles über die Webseite ein (Reiter „Quellen“ und „Tags“).
    Von Hand geht es auch, mit Excel oder einem Texteditor – siehe „Quellen und Tags“ unten.
-4. **Probelauf:** `python news_bot.py --test` zeigt nur in der Konsole, was gefunden wird.
+4. **Tags per KI:** Bei **DeepSeek** ([platform.deepseek.com](https://platform.deepseek.com)) oder
+   **Claude** ([console.anthropic.com](https://console.anthropic.com)) ein Konto anlegen, etwas
+   Guthaben aufladen und einen API-Schlüssel erstellen. In `bot/config.toml` eintragen (Datei
+   anlegen, falls es sie noch nicht gibt):
+   ```toml
+   [llm]
+   api_key = "sk-..."
+   ```
+   Welcher Anbieter gemeint ist, erkennt der Bot am Schlüssel (Claude-Schlüssel beginnen mit
+   `sk-ant-`). Für Claude zusätzlich einmal `pip install anthropic`. Der Schlüssel ist geheim wie
+   ein Passwort – `config.toml` wird nie hochgeladen, also nie in eine andere Datei schreiben.
+5. **Probelauf:** `python news_bot.py --test` zeigt nur in der Konsole, was gefunden wird – mit den
+   Tags, die die KI vergeben hat.
 
 ## Teil 2: Webseite auf Render
 
@@ -90,6 +105,35 @@ C:\NewsBot\bot\.venv\Scripts\pythonw.exe C:\NewsBot\bot\news_bot.py
 `pythonw` läuft ohne Fenster. Ob er läuft, siehst du auf der Seite oder in `bot/newsbot.log`.
 Vorher ein offenes Konsolenfenster mit dem Bot schließen – zweimal gleichzeitig startet er nicht.
 
+## Bot ohne PC (GitHub Actions)
+
+Ist der PC aus oder unerreichbar, kann GitHub den Bot laufen lassen: alle 30 Minuten ein Durchlauf
+(`.github/workflows/newsbot.yml`). Einrichten geht komplett im Browser oder in der GitHub-App:
+
+1. Im Repository **Settings → Secrets and variables → Actions → New repository secret**:
+   - `DASHBOARD_URL` – die Adresse deiner Render-Seite, z. B. `https://newsbot-xxxx.onrender.com`
+   - `BOT_TOKEN` – bei Render im Dienst unter **Environment**
+   - `DEEPSEEK_API_KEY` oder `ANTHROPIC_API_KEY` – dein KI-Schlüssel, damit Tags vergeben werden
+   - `DISCORD_WEBHOOK` – nur falls du Discord nutzt
+2. **Actions → Newsbot → Run workflow** startet den ersten Lauf sofort. Danach läuft er von selbst.
+3. Auf der Seite auf jedem Gerät **Benachrichtigungen aus- und wieder einschalten** (der Bot in
+   GitHub hat einen eigenen Push-Schlüssel) und gleich danach noch einmal **Run workflow** drücken.
+4. Quellen und Tags über die Seite eintragen oder per „Datei importieren“ – die Dateien vom PC hat
+   GitHub nicht.
+
+Gut zu wissen:
+- **Nie gleichzeitig mit dem Bot auf dem PC** – sonst kommen Meldungen doppelt. Zurück zum PC:
+  **Actions → Newsbot → ⋯ → Disable workflow**, dann den Bot auf dem PC starten.
+- Die Seite zeigt zwischen den Läufen „Keine Verbindung“ – das ist hier normal.
+- Befehle von der Seite (Quellen, Tags, Pausieren, Benachrichtigungen einschalten) holt der Bot erst
+  beim nächsten Lauf ab. Die kostenlose Render-Seite vergisst sie aber, wenn sie vorher einschläft
+  (nach 15 Minuten ohne Besuch) – also nach Änderungen gleich **Run workflow** drücken.
+- Der Stand (gesehene Artikel, Geräte, Quellen, Tags) liegt im Actions-Cache des Repositorys.
+  Läuft der Workflow 7 Tage lang nicht, löscht GitHub ihn.
+- Private Repositories haben 2000 Gratis-Minuten im Monat, jeder Lauf zählt mindestens 1 Minute
+  (48 Läufe am Tag ≈ 1440 Minuten). Verbrauch: in deinen GitHub-Kontoeinstellungen unter **Billing**. Wird es knapp, in
+  `newsbot.yml` bei `cron` z. B. `"7 * * * *"` (stündlich) eintragen.
+
 ---
 
 ## Was die Seite kann
@@ -106,7 +150,7 @@ Vorher ein offenes Konsolenfenster mit dem Bot schließen – zweimal gleichzeit
 | Benachrichtigungen ein/aus | für das Gerät, auf dem du gerade bist |
 | Reiter „Artikel“ | nach Tagen gruppiert, je 30 auf einmal („Weitere anzeigen“); Suche, Filter nach Tag und Medium, „nur gemeldete“; **neu** = seit deinem letzten Besuch |
 | Reiter „Quellen“ | Tabelle: eine Zeile pro Quelle, eine Spalte pro Wochentag – Tag anklicken schaltet ihn ein/aus; Suche, Quellen hinzufügen, Datei importieren |
-| Reiter „Tags“ | Karten: ein Tag pro Karte mit seinen Schlagwörtern; direkt in der Karte ergänzen oder entfernen; Suche, neuer Tag, Datei importieren |
+| Reiter „Tags“ | Karten: ein Tag pro Karte mit Beschreibung; bearbeiten (Stift) oder löschen; Suche, neuer Tag, Datei importieren (auch der ganze Tag-Baum) |
 | Reiter „Fehler“ / „Befehle“ | welche Quellen nicht gingen, was mit deinen Befehlen passiert ist |
 
 **Woher die Seite weiß, ob der Bot läuft:** Der Bot meldet sich alle 30 Sekunden, auch mitten in
@@ -122,7 +166,8 @@ Bot nur bei Artikeln zu deinen Themen. Auf der Seite stehen trotzdem alle neuen 
 | Du willst … | So geht's | Neustart nötig? |
 |---|---|---|
 | Quellen ändern | Reiter „Quellen“ auf der Seite – oder `quellen.csv` bearbeiten | nein |
-| Tags/Schlagwörter ändern | Reiter „Tags“ auf der Seite – oder `tags.csv` bearbeiten | nein |
+| Tags ändern | Reiter „Tags“ auf der Seite – oder `tags.csv` bearbeiten | nein |
+| API-Schlüssel, KI-Modell | `config.toml` unter `[llm]` bearbeiten | **ja** |
 | Pausieren, Intervall, Höchstalter, sofort prüfen | Knöpfe auf der Seite | nein |
 | `intervall_minuten`, `max_alter_stunden`, `nur_mit_tags` | `config.toml` bearbeiten und speichern | nein |
 | Discord, Dashboard-Adresse, Zeitzone | `config.toml` bearbeiten | **ja** |
@@ -143,24 +188,28 @@ Beides liegt als CSV-Datei im Ordner `bot` (Trennzeichen `;`, eine Zeile pro Ein
 
 ```
 quellen.csv                         tags.csv
-Wochentag;URL                       Tag;Schlagwort
-Montag;https://derstandard.at       Cyberkriminalität;cyber*
-Montag;https://orf.at/rss           Cyberkriminalität;ransomware
-Dienstag;https://derstandard.at     Österreich;wien*
+Wochentag;URL                       Tag;Beschreibung
+Montag;https://derstandard.at       Ransomware;Cyber > Cyber Security > Ransomware
+Montag;https://orf.at/rss           Österreich;
+Dienstag;https://derstandard.at     KI-Regulierung;AI Act und nationale KI-Gesetze, nicht: KI-Technik
 ```
+
+Die Beschreibung ist freiwillig. Sie hilft der KI, den Tag richtig zu verstehen – z. B. der Pfad im
+Tag-Baum oder ein Satz, worum es geht und was nicht dazugehört.
 
 **Über die Webseite** (auch unterwegs):
 
 - *Quellen hinzufügen:* Adressen eingeben (eine pro Zeile), Tage anklicken, „Hinzufügen“. In der
   Tabelle schaltet ein Klick auf einen Tag die Quelle für diesen Tag ein oder aus, der Mülleimer
   entfernt sie an allen Tagen.
-- *Neuer Tag:* Namen eingeben, Schlagwörter mit Enter oder Komma übernehmen. Bestehende Tags
-  ergänzt du direkt in ihrer Karte, das × an einem Schlagwort entfernt es.
+- *Neuer Tag:* Namen und (freiwillig) eine Beschreibung eingeben. Der Stift in einer Karte ändert
+  die Beschreibung, der Mülleimer löscht den Tag.
 - *Datei importieren:* CSV- oder JSON-Datei auswählen oder hineinziehen. Die Seite zeigt vorher an,
   was neu ist, was schon vorhanden ist und was übersprungen wird (mit Grund). Unterstützt werden
-  `quellen.csv`/`tags.csv` selbst, eine CSV mit einer Spalte pro Wochentag (wie die alte Excel) und
-  JSON – Beispiele stehen im Dialog unter „Welche Formate werden erkannt?“. Vorhandenes wird ergänzt,
-  nie gelöscht.
+  `quellen.csv`/`tags.csv` selbst, eine CSV mit einer Spalte pro Wochentag (wie die alte Excel),
+  der Tag-Baum aus `tags-import/` (CSV oder JSON – der Pfad wird zur Beschreibung) und JSON –
+  Beispiele stehen im Dialog unter „Welche Formate werden erkannt?“. Vorhandenes wird ergänzt, nie
+  gelöscht; bei vorhandenen Tags gilt die Beschreibung aus der Datei.
 
 Die Seite schickt jede Änderung an den Bot, der sie in die CSV-Datei einträgt und „Erledigt: …“
 zurückmeldet. Bis dahin sind die Einträge gestrichelt. Läuft der Bot gerade nicht, wartet der Befehl,
@@ -178,12 +227,11 @@ wieder schließen, sonst kann der Bot die Datei nicht ändern (er meldet das dan
   Zugangsdaten in der Adresse (`user:pass@`) und andere Arten wie `file:` oder `javascript:`.
   Der Bot prüft vor jedem Abruf und nach jeder Weiterleitung zusätzlich, wohin die Adresse wirklich
   zeigt.
-- Tags (bis 40 Zeichen) und Schlagwörter (bis 60 Zeichen): Buchstaben, Ziffern, Leerzeichen und
-  `- . & / ' +`, am Anfang immer ein Buchstabe oder eine Ziffer, bei Schlagwörtern `*` am Ende.
-  Dadurch kann keine Zelle mit `=`, `+`, `-` oder `@` beginnen – Excel würde sie sonst beim Öffnen
-  als Formel ausführen.
-- Höchstens 700 Einträge in `quellen.csv` (eine Quelle an 3 Tagen = 3 Einträge) und 100 Tags mit je
-  100 Schlagwörtern. Ein Import darf bis zu dieser Grenze alles auf einmal bringen; was darüber
+- Tag-Namen (bis 80 Zeichen): Buchstaben, Ziffern, Leerzeichen und `- . , : & / ' + ( ) [ ]`, am
+  Anfang ein Buchstabe, eine Ziffer oder eine Klammer (z. B. `[S]1 Cyber`). Beschreibungen (bis 300
+  Zeichen): normaler Text ohne Steuerzeichen; `= + - @` am Anfang werden entfernt. Dadurch kann keine
+  Zelle mit `=`, `+`, `-` oder `@` beginnen – Excel würde sie sonst beim Öffnen als Formel ausführen.
+- Höchstens 700 Einträge in `quellen.csv` (eine Quelle an 3 Tagen = 3 Einträge) und 1000 Tags. Ein Import darf bis zu dieser Grenze alles auf einmal bringen; was darüber
   hinausgeht, wird übersprungen und gemeldet.
 - Importierte Dateien liest nur dein Browser (höchstens 2 MB). An Server und Bot gehen nur die
   einzelnen, geprüften Einträge – die Datei selbst kommt nie auf deinen PC und wird nie ausgeführt.
@@ -193,8 +241,51 @@ gelöscht werden sie nicht. Die Webseite kann nur diese festen Befehle schicken;
 andere Dateien anfassen oder Einstellungen in `config.toml` ändern kann sie nicht.
 
 **Umstieg von der alten Version:** Tags aus `config.toml` übernimmt der Bot beim ersten Start
-automatisch in `tags.csv`. Eine alte `quellen.xlsx` wird nicht mehr gelesen – ihre Quellen einmal
+automatisch in `tags.csv`. Eine `tags.csv` mit Schlagwörtern (`Tag;Schlagwort`) stellt er beim Start
+auf `Tag;Beschreibung` um: Die Tags bleiben, die Schlagwörter fallen weg (Sicherung in
+`tags-schlagwoerter-alt.csv`). Eine alte `quellen.xlsx` wird nicht mehr gelesen – ihre Quellen einmal
 über die Webseite eintragen und die Excel-Datei danach löschen.
+
+## Tags per KI
+
+Für jeden neuen Artikel schickt der Bot **Medium, Titel und Vorschautext** an die KI (DeepSeek oder
+Claude), zusammen mit deiner Tag-Liste. Die KI wählt die passenden Tags aus – nur Tags, die es in `tags.csv`
+gibt; erfundene Namen verwirft der Bot. Ein Artikel kann mehrere Tags bekommen (höchstens 8) oder
+keinen, wenn nichts passt.
+
+Die Anweisung an die KI („Prompt“) steht in `bot/ki_tags.py`. Kurz gesagt: Ein Tag passt nur, wenn
+der Artikel das Thema wirklich behandelt (eine Erwähnung am Rand reicht nicht); im Tag-Baum zählt der
+spezifischste passende Tag, nicht zusätzlich alle übergeordneten; ein Land passt nur, wenn der
+Artikel von dort handelt – nicht, weil das Medium von dort ist. Texte aus den Artikeln behandelt
+die KI nur als Material, nie als Anweisung.
+
+Einstellungen in `config.toml`:
+
+```toml
+[llm]
+api_key = "sk-..."            # Pflicht – sonst kommen die Artikel ohne Tags
+anbieter = "deepseek"         # freiwillig: "deepseek" oder "anthropic" – sonst am Schlüssel erkannt
+modell = "deepseek-v4-flash"  # freiwillig; Standard: deepseek-v4-flash bzw. claude-opus-5-5
+effort = "low"                # freiwillig, nur Claude: low, medium oder high
+```
+
+Statt in `config.toml` darf der Schlüssel auch in der Umgebungsvariable `DEEPSEEK_API_KEY` bzw.
+`ANTHROPIC_API_KEY` stehen.
+
+| | DeepSeek | Claude |
+|---|---|---|
+| Preis | sehr günstig | teurer (`claude-haiku-5-5` deutlich günstiger als der Standard) |
+| Antwortform | JSON per Anweisung – der Bot prüft jede Antwort | JSON per Schema erzwungen |
+| Server | China (es gehen nur öffentliche Artikeltitel und -vorschauen hin) | USA |
+| Extra-Paket | keins | `pip install anthropic` |
+
+- **Kosten:** Die Artikel gehen in Paketen zu 20 hinaus. Die Tag-Liste wird zwischengespeichert
+  und kostet bei weiteren Anfragen nur einen Bruchteil. Was du tatsächlich verbrauchst, steht in
+  `newsbot.log` („KI-Tags: … Tokens“) und auf der Seite des Anbieters.
+- **Klappt die Tag-Vergabe nicht** (Schlüssel falsch, Guthaben leer, KI nicht erreichbar), steht
+  das im Reiter „Fehler“. Die Artikel werden dann ohne Tags gemeldet – auch bei `nur_mit_tags = true`,
+  damit nichts verloren geht.
+- Die Tags gelten ab der nächsten Prüfung; bereits gemeldete Artikel behalten ihre Tags.
 
 ## Seiten ohne RSS-Feed
 
@@ -249,15 +340,17 @@ Seite. Gibt es für das Ressort einen eigenen Feed, trag besser den ein.
 | `bot/news_bot.py` | der Bot |
 | `bot/webpush.py` | verschickt die Browser-Benachrichtigungen |
 | `bot/listen.py` | liest, prüft und ändert `quellen.csv` und `tags.csv` |
+| `bot/ki_tags.py` | Tags per KI: Prompt und Anbindung an DeepSeek bzw. Claude |
 | `bot/seiten.py` | Seiten ohne Feed: Sitemaps, Angaben aus Artikelseiten, Links der Startseite |
 | `bot/config.toml` | alle Einstellungen |
 | `bot/quellen.csv` | deine Quellen nach Wochentag (entsteht automatisch) |
-| `bot/tags.csv` | deine Tags und Schlagwörter (entsteht automatisch) |
+| `bot/tags.csv` | deine Tags mit Beschreibung (entsteht automatisch) |
 | `bot/state.json` | gemeldete Artikel, Verlauf, Geräte, Pause/Intervall (entsteht automatisch) |
 | `bot/vapid_privat.pem` | Schlüssel für Benachrichtigungen (entsteht automatisch, geheim) |
 | `bot/newsbot.log` | Protokoll |
 | `web/server.py` | die Webseite für Render |
 | `web/static/` | Seite im Design „Leitstelle“, Logik, Service Worker, App-Symbol |
 | `web/static/verwaltung.js` | Quellen-Tabelle, Tag-Karten, Dialoge und Datei-Import |
+| `tags-import/` | der komplette Tag-Baum als CSV und JSON zum Importieren |
 | `web/static/fonts/` | Schrift IBM Plex Sans (freie Lizenz, siehe `OFL.txt`) |
 | `render.yaml` | sagt Render, wie der Dienst angelegt wird |

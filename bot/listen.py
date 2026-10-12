@@ -1,7 +1,10 @@
 """Quellen und Tags als CSV-Dateien – lesen, streng prüfen und sicher ändern.
 
     quellen.csv   Wochentag;URL          eine Zeile pro Quelle und Wochentag
-    tags.csv      Tag;Schlagwort         eine Zeile pro Schlagwort
+    tags.csv      Tag;Beschreibung       eine Zeile pro Tag (Beschreibung freiwillig)
+
+Welche Tags zu einem Artikel passen, entscheidet die KI (ki_tags.py) – sie wählt nur aus
+den Tags in tags.csv. Die Beschreibung hilft ihr dabei (z. B. der Pfad im Tag-Baum).
 
 Beide Dateien kannst du mit Excel oder einem Texteditor bearbeiten. Zusätzlich
 ändert der Bot sie auf Befehl der Webseite. Alles, was von außen kommt, wird hier
@@ -9,9 +12,10 @@ geprüft, bevor es in eine Datei gelangt:
 
 * Adressen: nur http(s), keine Zugangsdaten in der Adresse, keine Adressen aus dem
   eigenen Netz (localhost, 192.168.x.x, Router …).
-* Tags und Schlagwörter: nur Buchstaben, Ziffern und wenige Satzzeichen, und sie
-  beginnen immer mit einem Buchstaben oder einer Ziffer. Eine Zelle kann also nie
-  mit = + - @ anfangen – Excel würde so etwas sonst als Formel ausführen.
+* Tag-Namen: nur Buchstaben, Ziffern und wenige Satzzeichen, am Anfang ein Buchstabe,
+  eine Ziffer oder eine Klammer. Beschreibungen: normaler Text ohne Steuerzeichen; Zeichen
+  wie = + - @ am Anfang werden entfernt. Eine Zelle kann also nie mit = + - @ anfangen –
+  Excel würde so etwas sonst als Formel ausführen.
 
 Zeilen, die du von Hand einträgst und die diese Regeln nicht erfüllen, ignoriert der
 Bot (mit Hinweis im Log und auf der Webseite), löscht sie aber nicht.
@@ -30,17 +34,18 @@ log = logging.getLogger("newsbot")
 
 WOCHENTAGE = ["montag", "dienstag", "mittwoch", "donnerstag", "freitag", "samstag", "sonntag"]
 QUELLEN_KOPF = ["Wochentag", "URL"]
-TAGS_KOPF = ["Tag", "Schlagwort"]
+TAGS_KOPF = ["Tag", "Beschreibung"]
 
 MAX_URL_LAENGE = 500
 MAX_QUELLEN = 700
-MAX_TAGS = 100
-MAX_WOERTER_PRO_TAG = 100
+MAX_TAGS = 1000
+MAX_TAG_LAENGE = 80
+MAX_BESCHREIBUNG = 300
 MAX_PRO_BEFEHL = 50
 
-# Erstes Zeichen immer Buchstabe/Ziffer → keine Excel-Formeln, keine Steuerzeichen.
-TAG_MUSTER = re.compile(r"[^\W_][\w .&/'+-]{0,39}")
-WORT_MUSTER = re.compile(r"[^\W_][\w .&/'+-]{0,58}\*?")
+# Erstes Zeichen Buchstabe, Ziffer oder Klammer (z. B. "[S]1 Cyber") → keine Excel-Formeln, keine Steuerzeichen.
+TAG_MUSTER = re.compile(r"(?:[^\W_]|[\[(])[\w .,:&/'+()\[\]-]{0,%d}" % (MAX_TAG_LAENGE - 1))
+FORMEL_ANFANG = "=+-@"
 DOMAIN_MUSTER = re.compile(r"[\w-]+(\.[\w-]+)+")
 INTERNE_NAMEN = ("localhost", ".localhost", ".local", ".lan", ".home", ".internal", ".intranet", ".corp", ".arpa")
 VERBOTENE_ZEICHEN = set('\\"<>`{}|^')
@@ -95,11 +100,16 @@ def pruefe_tag(wert: object) -> str | None:
     return name if TAG_MUSTER.fullmatch(name) else None
 
 
-def pruefe_wort(wert: object) -> str | None:
+def pruefe_beschreibung(wert: object) -> str | None:
+    """Freier Text für die KI. Leer ist erlaubt; = + - @ am Anfang werden entfernt (Excel-Formeln)."""
+    if wert is None:
+        return ""
     if not isinstance(wert, str):
         return None
-    wort = " ".join(wert.split())
-    return wort if WORT_MUSTER.fullmatch(wort) else None
+    text = " ".join(wert.split()).lstrip(FORMEL_ANFANG + " ")
+    if len(text) > MAX_BESCHREIBUNG or not text.isprintable():
+        return None
+    return text
 
 
 def _anzahl(n: int, eins: str, viele: str) -> str:
@@ -152,23 +162,40 @@ def schreibe_csv(datei: Path, kopf: list[str], zeilen: list[list[str]]) -> None:
 
 
 def richte_ein(quellen_datei: Path, tags_datei: Path, alte_tags: dict | None) -> None:
-    """Legt fehlende Dateien an. Tags aus einer älteren config.toml werden einmalig übernommen."""
+    """Legt fehlende Dateien an. Tags aus einer älteren config.toml werden einmalig übernommen,
+    eine tags.csv im alten Format (Tag;Schlagwort) wird auf Tag;Beschreibung umgestellt."""
     if not quellen_datei.exists():
         schreibe_csv(quellen_datei, QUELLEN_KOPF, [])
         log.info("%s angelegt – trage Quellen dort oder über die Webseite ein.", quellen_datei.name)
     if not tags_datei.exists():
         zeilen = []
-        for tag, woerter in (alte_tags or {}).items():
+        for tag in alte_tags or {}:
             name = pruefe_tag(tag)
-            for w in woerter if isinstance(woerter, list) else []:
-                wort = pruefe_wort(w)
-                if name and wort:
-                    zeilen.append([name, wort])
-                else:
-                    log.warning("Tag %r / Schlagwort %r aus config.toml nicht übernommen (ungültige Zeichen).", tag, w)
+            if name and all(z[0].lower() != name.lower() for z in zeilen):
+                zeilen.append([name, ""])
+            elif not name:
+                log.warning("Tag %r aus config.toml nicht übernommen (ungültige Zeichen).", tag)
         schreibe_csv(tags_datei, TAGS_KOPF, zeilen)
         if zeilen:
             log.info("Tags aus config.toml nach %s übernommen – ab jetzt gilt nur noch die CSV.", tags_datei.name)
+    elif _altes_tag_format(tags_datei):
+        sicherung = tags_datei.with_name("tags-schlagwoerter-alt.csv")
+        if not sicherung.exists():
+            sicherung.write_bytes(tags_datei.read_bytes())
+        namen: list[str] = []
+        for zeile in lies_csv(tags_datei, ["Tag", "Schlagwort"]):
+            name = pruefe_tag(zeile[0]) if zeile else None
+            if name and all(n.lower() != name.lower() for n in namen) and len(namen) < MAX_TAGS:
+                namen.append(name)
+        schreibe_csv(tags_datei, TAGS_KOPF, [[n, ""] for n in namen])
+        log.info("%s auf das neue Format umgestellt: %d Tags, Schlagwörter entfernt (die KI vergibt die Tags). "
+                 "Alte Datei gesichert als %s.", tags_datei.name, len(namen), sicherung.name)
+
+
+def _altes_tag_format(datei: Path) -> bool:
+    roh = datei.read_bytes()[:500].decode("utf-8-sig", errors="replace")
+    kopf = roh.split("\n", 1)[0].replace(",", ";").split(";")
+    return len(kopf) >= 2 and kopf[1].strip().strip('"').lower() in ("schlagwort", "schlagwörter", "schlagwoerter")
 
 
 # --------------------------------------------------------------------------- Quellen
@@ -282,19 +309,25 @@ def importiere_quellen(datei: Path, eintraege: object) -> str:
 # --------------------------------------------------------------------------- Tags
 
 def _tag_zeile(zeile: list[str]) -> tuple[str, str] | None:
-    if len(zeile) < 2:
+    name = pruefe_tag(zeile[0]) if zeile else None
+    beschreibung = pruefe_beschreibung(zeile[1] if len(zeile) > 1 else "")
+    if not name or beschreibung is None:
         return None
-    name, wort = pruefe_tag(zeile[0]), pruefe_wort(zeile[1])
-    return (name, wort) if name and wort else None
+    return name, "" if beschreibung.lower() == name.lower() else beschreibung  # oberste Ebene im Tag-Baum: Pfad = Name
 
 
-def _gehoert_zu(zeile: list[str], name: str) -> bool:
-    t = _tag_zeile(zeile)
-    return t is not None and t[0].lower() == name.lower()
+def _verbinde(alt: str, neu: str) -> str:
+    """Zwei Beschreibungen desselben Tags (z. B. gleicher Name an zwei Stellen im Tag-Baum)."""
+    if not neu or neu.lower() in alt.lower():
+        return alt
+    if not alt:
+        return neu
+    zusammen = f"{alt} | {neu}"
+    return zusammen if len(zusammen) <= MAX_BESCHREIBUNG else alt
 
 
-def _tags_aus(zeilen: list[list[str]]) -> tuple[dict[str, list[str]], list[list[str]]]:
-    tags: dict[str, list[str]] = {}
+def _tags_aus(zeilen: list[list[str]]) -> tuple[dict[str, str], list[list[str]]]:
+    tags: dict[str, str] = {}
     namen: dict[str, str] = {}  # klein → Schreibweise der ersten Zeile
     ungueltig: list[list[str]] = []
     for zeile in zeilen:
@@ -307,132 +340,93 @@ def _tags_aus(zeilen: list[list[str]]) -> tuple[dict[str, list[str]], list[list[
             if len(tags) >= MAX_TAGS:
                 continue
             name = namen[t[0].lower()] = t[0]
-            tags[name] = []
-        if t[1].lower() not in (w.lower() for w in tags[name]) and len(tags[name]) < MAX_WOERTER_PRO_TAG:
-            tags[name].append(t[1])
+            tags[name] = ""
+        tags[name] = _verbinde(tags[name], t[1])
     return tags, ungueltig
 
 
-def lade_tags(datei: Path) -> tuple[dict[str, list[str]], list[list[str]]]:
-    """({Tag: [Schlagwörter]} in Dateireihenfolge, ungültige Zeilen). Groß-/Kleinschreibung egal."""
+def lade_tags(datei: Path) -> tuple[dict[str, str], list[list[str]]]:
+    """({Tag: Beschreibung} in Dateireihenfolge, ungültige Zeilen). Groß-/Kleinschreibung egal."""
     return _tags_aus(lies_csv(datei, TAGS_KOPF))
 
 
-def _woerter_einfuegen(zeilen: list[list[str]], tags: dict[str, list[str]], name: str,
-                       woerter: list[str]) -> tuple[str, int, int, int]:
-    """Fügt bereits geprüfte Schlagwörter in die Datei-Zeilen ein (direkt hinter den Tag, damit er
-    zusammenbleibt) und hält `tags` aktuell. Gibt (Schreibweise, neu, schon vorhanden, über Limit) zurück."""
-    vorhanden = next((n for n in tags if n.lower() == name.lower()), None)
-    if vorhanden is None and len(tags) >= MAX_TAGS:
-        return name, 0, 0, len(woerter)
-    name = vorhanden or name
-    liste = tags.get(name, [])
-    bekannt = {w.lower() for w in liste}
-    neu: list[str] = []
-    for w in woerter:
-        if w.lower() not in bekannt:
-            bekannt.add(w.lower())
-            neu.append(w)
-    doppelt = len(woerter) - len(neu)
-    platz = max(0, MAX_WOERTER_PRO_TAG - len(liste))
-    neu, zu_viel = neu[:platz], max(0, len(neu) - platz)
-    if neu:
-        stelle = max((i + 1 for i, z in enumerate(zeilen) if _gehoert_zu(z, name)), default=len(zeilen))
-        zeilen[stelle:stelle] = [[name, w] for w in neu]
-        tags[name] = liste + neu
-    return name, len(neu), doppelt, zu_viel
+def _schreibe_tags(datei: Path, tags: dict[str, str], ungueltig: list[list[str]]) -> None:
+    # Ungültige Zeilen bleiben am Ende stehen – der Bot löscht nichts, was du von Hand eingetragen hast.
+    schreibe_csv(datei, TAGS_KOPF, [[n, b] for n, b in tags.items()] + ungueltig)
 
 
-def _saubere_woerter(woerter: list[str]) -> tuple[list[str], str | None]:
-    saubere: list[str] = []
-    for w in woerter:
-        s = pruefe_wort(w)
-        if s is None:
-            return [], str(w)
-        if s.lower() not in (x.lower() for x in saubere):
-            saubere.append(s)
-    return saubere, None
+def _vorhanden(tags: dict[str, str], name: str) -> str | None:
+    return next((n for n in tags if n.lower() == name.lower()), None)
 
 
-def aendere_tags(datei: Path, hinzufuegen: bool, tag: object, woerter: object) -> str:
+def aendere_tags(datei: Path, hinzufuegen: bool, tag: object, beschreibung: object = None) -> str:
+    """Befehl von der Webseite: Tag anlegen bzw. Beschreibung ändern, oder Tag löschen."""
     name = pruefe_tag(tag)
     if name is None:
         return "ungültiger Tag-Name – nichts geändert"
-    woerter = [] if woerter in (None, []) and not hinzufuegen else _textliste(woerter, MAX_PRO_BEFEHL)
-    if woerter is None:
-        return "keine gültigen Schlagwörter – nichts geändert"
-    saubere, falsch = _saubere_woerter(woerter)
-    if falsch is not None:
-        return f"Schlagwort nicht erlaubt: {falsch[:60]} – nichts geändert"
+    text = pruefe_beschreibung(beschreibung)
+    if text is None:
+        return f"Beschreibung nicht erlaubt (höchstens {MAX_BESCHREIBUNG} Zeichen, keine Steuerzeichen) – nichts geändert"
 
-    zeilen = lies_csv(datei, TAGS_KOPF)
-    tags, _ = _tags_aus(zeilen)
-    vorhanden = next((n for n in tags if n.lower() == name.lower()), None)
-
+    tags, ungueltig = lade_tags(datei)
+    vorhanden = _vorhanden(tags, name)
     if hinzufuegen:
-        if vorhanden is None and len(tags) >= MAX_TAGS:
-            return f"zu viele Tags (höchstens {MAX_TAGS}) – nichts geändert"
-        bekannt = {w.lower() for w in tags.get(vorhanden or "", [])}
-        neu = [w for w in saubere if w.lower() not in bekannt]
-        if not neu:
+        if vorhanden is None:
+            if len(tags) >= MAX_TAGS:
+                return f"zu viele Tags (höchstens {MAX_TAGS}) – nichts geändert"
+            tags[name] = text
+            ergebnis = f"Tag „{name}“ angelegt"
+        elif tags[vorhanden] == text:
             return "schon vorhanden – nichts geändert"
-        if len(bekannt) + len(neu) > MAX_WOERTER_PRO_TAG:
-            return f"zu viele Schlagwörter (höchstens {MAX_WOERTER_PRO_TAG} pro Tag) – nichts geändert"
-        name, anzahl, _, _ = _woerter_einfuegen(zeilen, tags, name, neu)
-        if vorhanden:
-            ergebnis = f"„{name}“: {_anzahl(anzahl, 'Schlagwort', 'Schlagwörter')} hinzugefügt"
         else:
-            ergebnis = f"Tag „{name}“ mit {_anzahl(anzahl, 'Schlagwort', 'Schlagwörtern')} angelegt"
+            tags[vorhanden] = text
+            ergebnis = f"„{vorhanden}“: Beschreibung {'geändert' if text else 'entfernt'}"
     else:
         if vorhanden is None:
             return "Tag nicht gefunden – nichts geändert"
-        klein = {w.lower() for w in saubere}
-        vorher = len(zeilen)
-        zeilen = [z for z in zeilen if not (_gehoert_zu(z, name) and (not klein or _tag_zeile(z)[1].lower() in klein))]
-        weg = vorher - len(zeilen)
-        if not weg:
-            return "Schlagwort nicht gefunden – nichts geändert"
-        ergebnis = f"Tag „{vorhanden}“ gelöscht" if not klein else f"„{vorhanden}“: {_anzahl(weg, 'Schlagwort', 'Schlagwörter')} entfernt"
+        del tags[vorhanden]
+        ergebnis = f"Tag „{vorhanden}“ gelöscht"
 
-    schreibe_csv(datei, TAGS_KOPF, zeilen)
+    _schreibe_tags(datei, tags, ungueltig)
     return ergebnis
 
 
 def importiere_tags(datei: Path, eintraege: object) -> str:
-    """Datei-Import von der Webseite: [{"name": …, "woerter": […]}, …] ohne 50er-Grenze.
-    Bestehende Tags werden ergänzt; jedes Schlagwort wird einzeln geprüft, Ungültiges übersprungen."""
+    """Datei-Import von der Webseite: [{"name": …, "beschreibung": …}, …] ohne 50er-Grenze.
+    Neue Tags werden angehängt, bei vorhandenen gilt die Beschreibung aus der Datei (falls angegeben).
+    Jeder Eintrag wird einzeln geprüft; Ungültiges wird übersprungen."""
     if not isinstance(eintraege, list) or not 0 < len(eintraege) <= MAX_TAGS:
         return "ungültige Angaben – nichts geändert"
-    zeilen = lies_csv(datei, TAGS_KOPF)
-    tags, _ = _tags_aus(zeilen)
-    neue_tags = neue_woerter = doppelt = ungueltig = zu_viel = 0
+    tags, ungueltige_zeilen = lade_tags(datei)
+    aus_diesem_import: set[str] = set()
+    neu = geaendert = doppelt = ungueltig = zu_viel = 0
     for e in eintraege:
         name = pruefe_tag(e.get("name")) if isinstance(e, dict) else None
-        woerter = e.get("woerter") if isinstance(e, dict) else None
-        if name is None or not isinstance(woerter, list):
-            ungueltig += len(woerter) if isinstance(woerter, list) else 1
+        text = pruefe_beschreibung(e.get("beschreibung")) if isinstance(e, dict) else None
+        if name is None or text is None:
+            ungueltig += 1
             continue
-        zu_viel += max(0, len(woerter) - MAX_WOERTER_PRO_TAG)
-        saubere: list[str] = []
-        for w in woerter[:MAX_WOERTER_PRO_TAG]:
-            s = pruefe_wort(w)
-            if s is None:
-                ungueltig += 1
-            elif s.lower() in (x.lower() for x in saubere):
-                doppelt += 1
-            else:
-                saubere.append(s)
-        if not saubere:
-            continue
-        war_neu = all(n.lower() != name.lower() for n in tags)
-        _, n, d, z = _woerter_einfuegen(zeilen, tags, name, saubere)
-        neue_woerter, doppelt, zu_viel = neue_woerter + n, doppelt + d, zu_viel + z
-        neue_tags += war_neu and n > 0
-    neu = _anzahl(neue_woerter, "Schlagwort", "Schlagwörter") + " importiert"
-    if neue_tags:
-        neu += f" ({_anzahl(neue_tags, 'neuer Tag', 'neue Tags')})"
-    ergebnis = _import_text(neu, doppelt, ungueltig, zu_viel)
-    if not neue_woerter:
+        vorhanden = _vorhanden(tags, name)
+        if vorhanden is None:
+            if len(tags) >= MAX_TAGS:
+                zu_viel += 1
+                continue
+            tags[name] = text
+            neu += 1
+        elif vorhanden in aus_diesem_import:  # gleicher Name zweimal in der Datei → Beschreibungen verbinden
+            tags[vorhanden] = _verbinde(tags[vorhanden], text)
+            doppelt += 1
+        elif text and tags[vorhanden] != text:
+            tags[vorhanden] = text
+            geaendert += 1
+        else:
+            doppelt += 1
+        aus_diesem_import.add(vorhanden or name)
+    ergebnis = _anzahl(neu, "Tag", "Tags") + " importiert"
+    if geaendert:
+        ergebnis += f", {_anzahl(geaendert, 'Beschreibung', 'Beschreibungen')} aktualisiert"
+    ergebnis = _import_text(ergebnis, doppelt, ungueltig, zu_viel)
+    if not neu and not geaendert:
         return ergebnis + " – nichts geändert"
-    schreibe_csv(datei, TAGS_KOPF, zeilen)
+    _schreibe_tags(datei, tags, ungueltige_zeilen)
     return ergebnis
