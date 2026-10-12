@@ -1,0 +1,71 @@
+# Bot in GitHub statt auf dem PC: alle 30 Minuten ein Durchlauf (python news_bot.py --einmal).
+# Einrichtung und Hinweise: README, Abschnitt „Bot ohne PC (GitHub Actions)“.
+# Nie gleichzeitig mit dem Bot auf dem PC laufen lassen – sonst kommen Meldungen doppelt.
+name: Newsbot
+
+on:
+  schedule:
+    - cron: "7,37 * * * *"  # UTC; GitHub startet geplante Läufe oft einige Minuten später
+  workflow_dispatch:        # „Run workflow“ in GitHub = sofort prüfen bzw. Befehle von der Seite abholen
+
+concurrency:
+  group: newsbot            # nie zwei Läufe gleichzeitig – sonst überschreiben sie sich den Stand
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  bot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: bot
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: bot/requirements.txt
+
+      - run: pip install -r requirements.txt
+
+      # Stand vom letzten Lauf: gesehene Artikel, Geräte, Quellen, Tags, Push-Schlüssel
+      - uses: actions/cache/restore@v4
+        with:
+          path: |
+            bot/state.json
+            bot/quellen.csv
+            bot/tags.csv
+            bot/vapid_privat.pem
+          key: newsbot-daten-${{ github.run_id }}
+          restore-keys: newsbot-daten-
+
+      - name: config.toml aus den Secrets schreiben
+        env:
+          DASHBOARD_URL: ${{ secrets.DASHBOARD_URL }}
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        run: |
+          python - <<'EOF'
+          import json, os
+          wert = lambda name: json.dumps(os.environ.get(name, "").strip())  # JSON-Strings sind gültiges TOML
+          with open("config.toml", "w", encoding="utf-8") as f:
+              f.write(f"discord_webhook = {wert('DISCORD_WEBHOOK')}\n\n"
+                      f"[dashboard]\nurl = {wert('DASHBOARD_URL')}\nbot_token = {wert('BOT_TOKEN')}\n")
+          EOF
+
+      - run: python news_bot.py --einmal
+
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: |
+            bot/state.json
+            bot/quellen.csv
+            bot/tags.csv
+            bot/vapid_privat.pem
+          key: newsbot-daten-${{ github.run_id }}-${{ github.run_attempt }}

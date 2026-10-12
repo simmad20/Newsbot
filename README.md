@@ -90,6 +90,34 @@ C:\NewsBot\bot\.venv\Scripts\pythonw.exe C:\NewsBot\bot\news_bot.py
 `pythonw` läuft ohne Fenster. Ob er läuft, siehst du auf der Seite oder in `bot/newsbot.log`.
 Vorher ein offenes Konsolenfenster mit dem Bot schließen – zweimal gleichzeitig startet er nicht.
 
+## Bot ohne PC (GitHub Actions)
+
+Ist der PC aus oder unerreichbar, kann GitHub den Bot laufen lassen: alle 30 Minuten ein Durchlauf
+(`.github/workflows/newsbot.yml`). Einrichten geht komplett im Browser oder in der GitHub-App:
+
+1. Im Repository **Settings → Secrets and variables → Actions → New repository secret**:
+   - `DASHBOARD_URL` – die Adresse deiner Render-Seite, z. B. `https://newsbot-xxxx.onrender.com`
+   - `BOT_TOKEN` – bei Render im Dienst unter **Environment**
+   - `DISCORD_WEBHOOK` – nur falls du Discord nutzt
+2. **Actions → Newsbot → Run workflow** startet den ersten Lauf sofort. Danach läuft er von selbst.
+3. Auf der Seite auf jedem Gerät **Benachrichtigungen aus- und wieder einschalten** (der Bot in
+   GitHub hat einen eigenen Push-Schlüssel) und gleich danach noch einmal **Run workflow** drücken.
+4. Quellen und Tags über die Seite eintragen oder per „Datei importieren“ – die Dateien vom PC hat
+   GitHub nicht.
+
+Gut zu wissen:
+- **Nie gleichzeitig mit dem Bot auf dem PC** – sonst kommen Meldungen doppelt. Zurück zum PC:
+  **Actions → Newsbot → ⋯ → Disable workflow**, dann den Bot auf dem PC starten.
+- Die Seite zeigt zwischen den Läufen „Keine Verbindung“ – das ist hier normal.
+- Befehle von der Seite (Quellen, Tags, Pausieren, Benachrichtigungen einschalten) holt der Bot erst
+  beim nächsten Lauf ab. Die kostenlose Render-Seite vergisst sie aber, wenn sie vorher einschläft
+  (nach 15 Minuten ohne Besuch) – also nach Änderungen gleich **Run workflow** drücken.
+- Der Stand (gesehene Artikel, Geräte, Quellen, Tags) liegt im Actions-Cache des Repositorys.
+  Läuft der Workflow 7 Tage lang nicht, löscht GitHub ihn.
+- Private Repositories haben 2000 Gratis-Minuten im Monat, jeder Lauf zählt mindestens 1 Minute
+  (48 Läufe am Tag ≈ 1440 Minuten). Verbrauch: in deinen GitHub-Kontoeinstellungen unter **Billing**. Wird es knapp, in
+  `newsbot.yml` bei `cron` z. B. `"7 * * * *"` (stündlich) eintragen.
+
 ---
 
 ## Was die Seite kann
