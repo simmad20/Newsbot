@@ -1,9 +1,9 @@
 """News-Bot (Hobby-Version) – läuft auf deinem PC.
 
 Liest aus quellen.csv die Quellen für den heutigen Wochentag, prüft deren
-RSS/Atom-Feeds auf neue Artikel (max. 24 h alt), vergibt Tags laut tags.csv und
-meldet sie als Browser-Benachrichtigung über dein Dashboard auf Render und/oder an
-Discord. Das Dashboard zeigt Status, Artikel, Fehler, Quellen und Tags und nimmt
+RSS/Atom-Feeds auf neue Artikel (max. 24 h alt), lässt Claude passende Tags aus
+tags.csv auswählen (ki_tags.py) und meldet sie als Browser-Benachrichtigung über
+dein Dashboard auf Render und/oder an Discord. Das Dashboard zeigt Status, Artikel, Fehler, Quellen und Tags und nimmt
 Befehle entgegen – auch neue Quellen und Tags. Alles Gemerkte liegt in state.json.
 
 Aufruf:
@@ -38,6 +38,7 @@ import feedparser
 import requests
 import urllib3
 
+import ki_tags
 import listen
 import seiten
 import webpush
@@ -589,21 +590,23 @@ def lese_artikel(feed_inhalt: bytes, feed_url: str, jetzt: datetime, grenze: tim
     return artikel
 
 
-# --------------------------------------------------------------------------- Tags
+# --------------------------------------------------------------------------- Tags (per KI, siehe ki_tags.py)
 
-def finde_tags(text: str, regeln: dict[str, list[str]]) -> list[str]:
-    """Schlagwort-Tags. "cyber*" = Wortanfang (Cyberangriff), "KI" = ganzes Wort (nicht Kiew)."""
-    treffer = []
-    for tag, woerter in regeln.items():
-        for wort in woerter:
-            if wort.endswith("*"):
-                muster = rf"(?<!\w){re.escape(wort[:-1])}"
-            else:
-                muster = rf"(?<!\w){re.escape(wort)}(?!\w)"
-            if re.search(muster, text, re.I):
-                treffer.append(tag)
-                break
-    return treffer
+def vergib_tags(cfg: dict, state: dict, artikel: list[dict], tags: dict[str, str], test: bool) -> None:
+    """Setzt a["tags"] für alle Artikel. Klappt das nicht, bekommen sie a["tags_offen"] = True –
+    sie werden dann trotzdem gemeldet (auch bei nur_mit_tags), damit nichts verloren geht."""
+    for a in artikel:
+        a["tags"], a["tags_offen"] = [], bool(tags)  # ohne Tags in tags.csv gibt es nichts zu vergeben
+    if not tags or not artikel:
+        return
+    try:
+        ki_tags.TagVergabe(ki_tags.einstellungen(cfg), tags).vergib(artikel)
+    except ki_tags.KiFehler as e:
+        melde_fehler(cfg, state, "Tags (Claude-API)", f"Tags konnten nicht vergeben werden: {e}", test, discord=False)
+    except Exception as e:  # unerwartet – die Prüfung läuft trotzdem weiter
+        log.exception("Unerwarteter Fehler bei der Tag-Vergabe")
+        melde_fehler(cfg, state, "Tags (Claude-API)", f"Unerwarteter Fehler ({type(e).__name__}) – Details in newsbot.log",
+                     test, discord=False)
 
 
 # --------------------------------------------------------------------------- Discord
@@ -771,7 +774,7 @@ def merke_fuer_dashboard(state: dict, a: dict, gemeldet: bool) -> None:
     eintrag = {
         "url": a["url"], "titel": a["titel"][:300], "medium": a["medium"][:200], "teaser": a["teaser"][:1200],
         "autor": a["autor"][:200], "datum": a["datum"].isoformat() if a["datum"] else None,
-        "datum_art": a["datum_art"], "tags": [t[:60] for t in a["tags"][:20]], "gemeldet": gemeldet,
+        "datum_art": a["datum_art"], "tags": [t[:80] for t in a["tags"][:20]], "gemeldet": gemeldet,
         "weg": a.get("weg", "feed"),
         "gefunden_um": jetzt_utc().isoformat(),
     }
@@ -828,23 +831,25 @@ def durchlauf(cfg: dict, state: dict, test: bool = False) -> str:
             if any(s in state["gesehen"] or s in schon_im_lauf for s in a["schluessel"]):
                 continue
             schon_im_lauf.update(a["schluessel"])
-            a["tags"] = finde_tags(f"{a['titel']} {a['teaser']}", tags)
             neue.append(a)
 
     neue.sort(key=lambda a: a["datum"] or jetzt)  # älteste zuerst
     gesendet = verarbeitet = 0
-    for a in neue:
-        if cfg["nur_mit_tags"] and not a["tags"]:
+    for i, a in enumerate(neue):
+        if gesendet >= cfg["max_meldungen_pro_lauf"]:
+            log.info("Limit pro Lauf erreicht – restliche Artikel folgen beim nächsten Lauf.")
+            break
+        if "tags" not in a:  # Tags paketweise erst holen, wenn die Artikel an der Reihe sind –
+            vergib_tags(cfg, state, neue[i:i + ki_tags.STAPEL], tags, test)  # was warten muss, kostet nichts
+        if cfg["nur_mit_tags"] and not a["tags"] and not a["tags_offen"]:
             if not test:
                 merke_gesehen(state, a)
                 merke_fuer_dashboard(state, a, gemeldet=False)  # Seite zeigt alles, Benachrichtigung nur Relevantes
             verarbeitet += 1
             continue
-        if gesendet >= cfg["max_meldungen_pro_lauf"]:
-            log.info("Limit pro Lauf erreicht – restliche Artikel folgen beim nächsten Lauf.")
-            break
         if test:
-            print(f"[{', '.join(a['tags']) or '-'}] {a['medium']} | {a['titel']}\n    {a['url']}")
+            tagtext = "Tags fehlen" if a["tags_offen"] else ", ".join(a["tags"]) or "-"
+            print(f"[{tagtext}] {a['medium']} | {a['titel']}\n    {a['url']}")
             gesendet += 1
             verarbeitet += 1
             continue
@@ -870,6 +875,7 @@ def durchlauf(cfg: dict, state: dict, test: bool = False) -> str:
 # --------------------------------------------------------------------------- Dashboard-Sync & Befehle
 
 def baue_status(cfg: dict, state: dict) -> dict:
+    llm = ki_tags.einstellungen(cfg)
     return {
         "pausiert": state["pausiert"],
         "intervall_minuten": intervall(cfg, state),
@@ -880,6 +886,7 @@ def baue_status(cfg: dict, state: dict) -> dict:
         "wochentag": state["wochentag"],
         "quellen_heute": state["quellen_heute"],
         "nur_mit_tags": bool(cfg["nur_mit_tags"]),
+        "ki_modell": llm["modell"] if llm["api_key"] else None,
         "discord_aktiv": bool(cfg["discord_webhook"]),
         "push_geraete": len(state["push_abos"]),
         "vapid_public_key": webpush.oeffentlicher_schluessel(_vapid_schluessel) if _vapid_schluessel else None,
@@ -979,7 +986,7 @@ def baue_listen(state: dict) -> tuple[dict | None, str | None]:
         return None, None
     wege = {u: w["art"] for u, w in state["feeds"].items() if isinstance(w, dict) and w.get("art") in WEGE}
     daten = {"quellen": [{"wochentag": t, "url": u} for t, u in quellen],
-             "tags": [{"name": n, "woerter": w} for n, w in tags.items()],
+             "tags": [{"name": n, "beschreibung": b} for n, b in tags.items()],
              "wege": [{"url": u, "art": wege[u]} for u in dict.fromkeys(u for _, u in quellen) if u in wege]}
     return daten, hashlib.sha256(json.dumps(daten, sort_keys=True).encode()).hexdigest()
 
@@ -1097,7 +1104,7 @@ def fuehre_befehl_aus(b: dict, cfg: dict, state: dict) -> str:
             state["wochentag"], state["quellen_heute"] = wochentag.capitalize(), len(heute)
             return ergebnis
         if aktion in ("tag_hinzufuegen", "tag_entfernen"):
-            return listen.aendere_tags(TAGS_DATEI, aktion == "tag_hinzufuegen", b.get("tag"), b.get("woerter"))
+            return listen.aendere_tags(TAGS_DATEI, aktion == "tag_hinzufuegen", b.get("tag"), b.get("beschreibung"))
         if aktion == "tags_importieren":
             return listen.importiere_tags(TAGS_DATEI, b.get("tags"))
     except listen.DateiGesperrt as e:
@@ -1191,6 +1198,9 @@ def main() -> None:
     richte_logging_ein()
     cfg = lade_config()
     listen.richte_ein(QUELLEN_DATEI, TAGS_DATEI, cfg.get("tags"))
+    llm = ki_tags.einstellungen(cfg)
+    log.info("Tags vergibt %s.", llm["modell"] if llm["api_key"]
+             else "niemand – kein API-Schlüssel in config.toml unter [llm] (Artikel kommen ohne Tags)")
 
     if args.test:
         durchlauf(cfg, copy.deepcopy(lade_state()), test=True)

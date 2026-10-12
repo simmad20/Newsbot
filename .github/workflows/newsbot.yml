@@ -49,13 +49,15 @@ jobs:
           DASHBOARD_URL: ${{ secrets.DASHBOARD_URL }}
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           python - <<'EOF'
           import json, os
           wert = lambda name: json.dumps(os.environ.get(name, "").strip())  # JSON-Strings sind gültiges TOML
           with open("config.toml", "w", encoding="utf-8") as f:
               f.write(f"discord_webhook = {wert('DISCORD_WEBHOOK')}\n\n"
-                      f"[dashboard]\nurl = {wert('DASHBOARD_URL')}\nbot_token = {wert('BOT_TOKEN')}\n")
+                      f"[dashboard]\nurl = {wert('DASHBOARD_URL')}\nbot_token = {wert('BOT_TOKEN')}\n\n"
+                      f"[llm]\napi_key = {wert('ANTHROPIC_API_KEY')}\n")
           EOF
 
       - run: python news_bot.py --einmal

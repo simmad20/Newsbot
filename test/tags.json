@@ -1,40 +1,20 @@
-{
-  "Cyberkriminalität": [
-    "ransomware",
-    "erpress*",
-    "schadsoftware",
-    "trojaner*"
-  ],
-  "Datenschutz": [
-    "dsgvo",
-    "cookie*",
-    "datenleck*"
-  ],
-  "Sport": [
-    "fußball*",
-    "tennis",
-    "skifahr*",
-    "olympia*",
-    "bundesliga"
-  ],
-  "Wetter": [
-    "unwetter*",
-    "hochwasser",
-    "hitzewelle",
-    "sturm*",
-    "lawine*"
-  ],
-  "Gesundheit": [
-    "impf*",
-    "krankenhaus*",
-    "pandemie",
-    "grippe*"
-  ],
-  "Weltraum": [
-    "nasa",
-    "esa",
-    "rakete*",
-    "raumfahrt*",
-    "mars"
-  ]
-}
+[
+  {
+    "name": "Cyberkriminalität",
+    "beschreibung": "Angriffe auf Computer und Netze, Ransomware, Phishing, Datendiebstahl"
+  },
+  {
+    "name": "Datenschutz",
+    "beschreibung": "DSGVO, Datenlecks, Tracking und Überwachung von Personen"
+  },
+  {
+    "name": "Sport",
+    "beschreibung": ""
+  },
+  {
+    "name": "Gesundheit",
+    "beschreibung": "Medizin, Gesundheitssystem, Impfungen"
+  },
+  "Bildung",
+  "Verkehr"
+]

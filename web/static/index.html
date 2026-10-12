@@ -158,8 +158,8 @@
       <div class="werkzeugleiste">
         <label class="suchfeld">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-          <span class="nur-vorlesen">Tags und Schlagwörter durchsuchen</span>
-          <input id="tags-suche" type="search" placeholder="Tags und Schlagwörter durchsuchen" autocomplete="off">
+          <span class="nur-vorlesen">Tags und Beschreibungen durchsuchen</span>
+          <input id="tags-suche" type="search" placeholder="Tags durchsuchen" autocomplete="off">
         </label>
         <div class="werkzeug-knoepfe">
           <button type="button" class="knopf mit-symbol" data-import="tags"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg><span>Datei importieren</span></button>
@@ -221,17 +221,14 @@
     </header>
     <div class="feld">
       <label for="tag-name">Name</label>
-      <input id="tag-name" type="text" maxlength="40" list="tag-namen" autocomplete="off" placeholder="z. B. Cybersecurity">
+      <input id="tag-name" type="text" maxlength="80" list="tag-namen" autocomplete="off" placeholder="z. B. Ransomware">
       <datalist id="tag-namen"></datalist>
       <p id="tag-name-hinweis" class="feld-hilfe"></p>
     </div>
     <div class="feld">
-      <label for="tag-wort-eingabe">Schlagwörter</label>
-      <div class="chip-eingabe">
-        <ul id="tag-chip-liste" class="woerter" aria-label="Gewählte Schlagwörter"></ul>
-        <input id="tag-wort-eingabe" type="text" maxlength="600" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="Wort eintippen, Enter">
-      </div>
-      <p class="feld-hilfe">Enter oder Komma übernimmt ein Wort. <strong>cyber*</strong> findet auch „Cyberangriff“, ohne * zählt nur das ganze Wort. Groß-/Kleinschreibung egal.</p>
+      <label for="tag-beschreibung">Beschreibung <span class="leise">(freiwillig)</span></label>
+      <textarea id="tag-beschreibung" rows="3" maxlength="300" placeholder="z. B. Angriffe, bei denen Daten verschlüsselt und Lösegeld gefordert wird"></textarea>
+      <p class="feld-hilfe">Die KI liest jeden neuen Artikel und wählt passende Tags aus deiner Liste. Die Beschreibung hilft ihr, den Tag richtig zu verstehen – worum es geht und was <strong>nicht</strong> dazugehört.</p>
     </div>
     <p id="tag-fehler" class="dialog-fehler" role="alert"></p>
     <footer class="dialog-fuss">

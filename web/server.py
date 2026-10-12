@@ -58,15 +58,14 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)  # Artikeldaten etwa 6× k
 # hier geht es darum, Unsinn gar nicht erst anzunehmen und klare Fehlermeldungen zu geben.
 
 Wochentag = Literal["montag", "dienstag", "mittwoch", "donnerstag", "freitag", "samstag", "sonntag"]
-TAG_MUSTER = re.compile(r"[^\W_][\w .&/'+-]{0,39}")
-WORT_MUSTER = re.compile(r"[^\W_][\w .&/'+-]{0,58}\*?")
+TAG_MUSTER = re.compile(r"(?:[^\W_]|[\[(])[\w .,:&/'+()\[\]-]{0,79}")
 DOMAIN_MUSTER = re.compile(r"[\w-]+(\.[\w-]+)+")
 INTERNE_NAMEN = ("localhost", ".localhost", ".local", ".lan", ".home", ".internal", ".intranet", ".corp", ".arpa")
 VERBOTENE_ZEICHEN = set('\\"<>`{}|^')
 MAX_PRO_BEFEHL = 50        # Eingabe im Formular
 MAX_IMPORT_QUELLEN = 700   # Datei-Import (gleiche Grenzen wie die CSV-Dateien beim Bot)
-MAX_IMPORT_TAGS = 100
-MAX_WOERTER_PRO_TAG = 100
+MAX_TAGS = 1000
+MAX_BESCHREIBUNG = 300
 MAX_ALTER_STUNDEN = 168
 
 
@@ -108,21 +107,21 @@ def _url_pruefen(wert: str) -> str:
 def _tag_pruefen(wert: str) -> str:
     name = " ".join(wert.split())
     if not TAG_MUSTER.fullmatch(name):
-        raise ValueError(f"Tag-Name nicht erlaubt: {name[:40]} (nur Buchstaben, Ziffern, Leerzeichen und - . & / ' +)")
+        raise ValueError(f"Tag-Name nicht erlaubt: {name[:80]} (höchstens 80 Zeichen: Buchstaben, Ziffern, "
+                         "Leerzeichen und - . , : & / ' + ( ) [ ])")
     return name
 
 
-def _wort_pruefen(wert: str) -> str:
-    wort = " ".join(wert.split())
-    if not WORT_MUSTER.fullmatch(wort):
-        raise ValueError(f"Schlagwort nicht erlaubt: {wort[:60]} (nur Buchstaben, Ziffern, Leerzeichen, "
-                         "- . & / ' + und * am Ende)")
-    return wort
+def _beschreibung_pruefen(wert: str) -> str:
+    text = " ".join(wert.split()).lstrip("=+-@ ")  # nie mit einer Excel-Formel beginnen
+    if len(text) > MAX_BESCHREIBUNG or not text.isprintable():
+        raise ValueError(f"Beschreibung nicht erlaubt (höchstens {MAX_BESCHREIBUNG} Zeichen, keine Steuerzeichen)")
+    return text
 
 
 QuellUrl = Annotated[str, Field(max_length=600), AfterValidator(_url_pruefen)]
 TagName = Annotated[str, Field(max_length=80), AfterValidator(_tag_pruefen)]
-Schlagwort = Annotated[str, Field(max_length=100), AfterValidator(_wort_pruefen)]
+Beschreibung = Annotated[str, Field(max_length=1000), AfterValidator(_beschreibung_pruefen)]
 
 
 # --------------------------------------------------------------------------- Datenmodelle
@@ -138,7 +137,7 @@ class ArtikelIn(BaseModel):
     autor: str = Field("", max_length=200)
     datum: Optional[str] = Field(None, max_length=40)
     datum_art: str = Field("", max_length=20)
-    tags: list[Annotated[str, Field(max_length=60)]] = Field(default_factory=list, max_length=20)
+    tags: list[Annotated[str, Field(max_length=80)]] = Field(default_factory=list, max_length=20)
     gemeldet: bool = False
     gefunden_um: str = Field(max_length=40)
     weg: Literal["", "feed", "news_sitemap", "sitemap", "startseite"] = ""
@@ -160,6 +159,7 @@ class StatusIn(BaseModel):
     wochentag: Kurz = ""
     quellen_heute: int = Field(0, ge=0, le=100000)
     nur_mit_tags: bool = False
+    ki_modell: Optional[str] = Field(None, max_length=80)  # None = keine KI-Tags (kein API-Schlüssel)
     discord_aktiv: bool = False
     push_geraete: int = Field(0, ge=0, le=100)
     vapid_public_key: Optional[str] = Field(None, max_length=120, pattern=r"^[A-Za-z0-9_-]+$")
@@ -192,7 +192,7 @@ class QuelleIn(BaseModel):
 
 class TagIn(BaseModel):
     name: str = Field(max_length=80)
-    woerter: list[Annotated[str, Field(max_length=100)]] = Field(max_length=100)
+    beschreibung: str = Field("", max_length=MAX_BESCHREIBUNG)
 
 
 class WegIn(BaseModel):
@@ -203,7 +203,7 @@ class WegIn(BaseModel):
 class ListenIn(BaseModel):
     """Quellen und Tags, wie sie gerade in den CSV-Dateien auf dem PC stehen (nur zur Anzeige)."""
     quellen: list[QuelleIn] = Field(max_length=700)
-    tags: list[TagIn] = Field(max_length=100)
+    tags: list[TagIn] = Field(max_length=MAX_TAGS)
     wege: list[WegIn] = Field(default_factory=list, max_length=700)  # wie der Bot an die Artikel kommt
 
 
@@ -233,7 +233,7 @@ class QuelleImport(BaseModel):
 class TagImport(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: TagName
-    woerter: list[Schlagwort] = Field(min_length=1, max_length=MAX_WOERTER_PRO_TAG)
+    beschreibung: Beschreibung = ""
 
 
 B64 = Annotated[str, Field(min_length=10, max_length=200, pattern=r"^[A-Za-z0-9_-]+=*$")]
@@ -268,9 +268,9 @@ class BefehlIn(BaseModel):
     tage: list[Wochentag] = Field(default_factory=list, max_length=7)
     urls: list[QuellUrl] = Field(default_factory=list, max_length=MAX_PRO_BEFEHL)
     tag: Optional[TagName] = None
-    woerter: list[Schlagwort] = Field(default_factory=list, max_length=MAX_PRO_BEFEHL)
+    beschreibung: Optional[Beschreibung] = None
     quellen: list[QuelleImport] = Field(default_factory=list, max_length=MAX_IMPORT_QUELLEN)
-    tags: list[TagImport] = Field(default_factory=list, max_length=MAX_IMPORT_TAGS)
+    tags: list[TagImport] = Field(default_factory=list, max_length=MAX_TAGS)
 
     @model_validator(mode="after")
     def passt_zur_aktion(self) -> "BefehlIn":
@@ -286,8 +286,6 @@ class BefehlIn(BaseModel):
             raise ValueError("Bitte mindestens eine Adresse und einen Wochentag angeben.")
         if self.aktion in TAG_AKTIONEN and not self.tag:
             raise ValueError("Bitte einen Tag-Namen angeben.")
-        if self.aktion == "tag_hinzufuegen" and not self.woerter:
-            raise ValueError("Bitte mindestens ein Schlagwort angeben.")
         return self
 
 
@@ -339,7 +337,7 @@ class Speicher:
                     b["zustand"], b["ergebnis"] = "erledigt", erledigt[b["id"]]
                 elif b["zustand"] == "offen":
                     b["zustand"] = "abgeholt"
-                    abzuholen.append({k: b[k] for k in ("id", "aktion", "wert", "tage", "urls", "tag", "woerter",
+                    abzuholen.append({k: b[k] for k in ("id", "aktion", "wert", "tage", "urls", "tag", "beschreibung",
                                                         "quellen", "tags")})
             push, self.push_aenderungen = self.push_aenderungen, []
             return {"befehle": abzuholen, "snapshot_noetig": not self.hat_snapshot, "push_aenderungen": push}
@@ -410,7 +408,6 @@ def kompakt(b: dict) -> dict:
         k["anzahl_quellen"] = len(b["quellen"])
     if b.get("tags"):
         k["anzahl_tags"] = len(b["tags"])
-        k["anzahl_woerter"] = sum(len(t["woerter"]) for t in b["tags"])
     return k
 
 

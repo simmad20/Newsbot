@@ -587,61 +587,11 @@ code { padding: 1px 5px; border-radius: 4px; background: var(--chip); color: var
 .tag-karte.wartend { border-style: dashed; border-top-style: solid; opacity: 0.85; }
 .tag-karte.geht { opacity: 0.5; }
 .karte-kopf { display: flex; align-items: center; gap: 8px; min-height: 36px; }
-.karte-titel { min-width: 0; margin: 0; font-size: 16px; font-weight: 600; color: var(--text-hell); overflow-wrap: anywhere; }
-.karte-kopf .zahl { flex: none; }
-.karte-kopf .symbol-knopf, .karte-status { margin-left: auto; }
+.karte-titel { min-width: 0; margin: 0; font-size: 16px; font-weight: 600; color: var(--text-hell); overflow-wrap: anywhere; hyphens: auto; }
+.karte-kopf .symbol-knopf { flex: none; }
+.karte-kopf .karte-rechts, .karte-status { margin-left: auto; }
+.karte-beschreibung { margin: 0; font-size: 14px; line-height: 1.45; overflow-wrap: anywhere; }
 .karte-status { font-size: 12px; font-weight: 600; color: var(--akzent); white-space: nowrap; }
-
-.woerter { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
-.wort {
-  display: inline-flex;
-  align-items: center;
-  min-height: 28px;
-  max-width: 100%;
-  padding: 0 4px 0 10px;
-  border: 1px solid transparent;
-  border-radius: 999px;
-  background: var(--chip);
-  color: var(--chip-text);
-  font-size: 14px;
-  overflow-wrap: anywhere;
-}
-.wort:not(:has(button)) { padding-right: 10px; }
-.wort .stern { color: var(--akzent); font-weight: 700; }
-.wort.kommt { border-style: dashed; border-color: var(--akzent); background: none; color: var(--akzent); }
-.wort.geht { text-decoration: line-through; opacity: 0.5; }
-.wort.treffer { border-color: var(--fokus); }
-.wort-weg {
-  display: inline-grid;
-  place-items: center;
-  width: 22px;
-  height: 22px;
-  margin-left: 2px;
-  border: 0;
-  border-radius: 50%;
-  background: none;
-  color: var(--leise);
-  cursor: pointer;
-}
-.wort-weg:hover { color: var(--rot); background: var(--fehler-grund); }
-
-.karte-eingabe { display: flex; align-items: center; gap: 4px; margin-top: auto; padding-top: 10px; border-top: 1px solid var(--linie); }
-.tag-karte .karte-feld {
-  flex: 1;
-  min-width: 0;
-  min-height: 36px;
-  padding: 0 8px;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  background: none;
-  color: var(--text);
-  font: inherit;
-  font-size: 14px;
-}
-.tag-karte .karte-feld:hover { border-color: var(--linie); }
-.tag-karte .karte-feld:focus { border-color: var(--rand); background: var(--eingabe); outline: none; }
-.karte-fehler { font-size: 13px; color: var(--fehler); }
-.karte-fehler:empty { display: none; }
 
 /* ---------------------------------------------------------------- Dialoge */
 
@@ -701,22 +651,6 @@ textarea { resize: vertical; line-height: 1.5; }
 .tag-chip input:checked + span { border-color: var(--akzent); background: var(--akzent); color: var(--akzent-text); }
 .tag-chip input:focus-visible + span { outline: 3px solid var(--fokus); outline-offset: 2px; }
 .schnellwahl { display: flex; gap: 16px; margin-top: 4px; }
-
-.chip-eingabe {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  min-height: 48px;
-  padding: 6px 8px;
-  border: 1px solid var(--rand);
-  border-radius: 8px;
-  background: var(--eingabe);
-}
-.chip-eingabe:focus-within { outline: 3px solid var(--fokus); outline-offset: 2px; }
-.chip-eingabe .woerter { display: contents; }
-.chip-eingabe input { flex: 1 1 140px; min-height: 32px; padding: 0 4px; border: 0; background: none; }
-.chip-eingabe input:focus { outline: none; }
 
 /* ---- Import */
 

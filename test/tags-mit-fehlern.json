@@ -1,21 +1,46 @@
-{
-  "Test": [
-    "gültig",
-    "auch gültig*",
-    "-minus",
-    "+plus",
-    "@at",
-    "=SUMME(1+1)",
-    "<script>alert(1)</script>",
-    "mit*stern"
-  ],
-  "=HYPERLINK(\"https://example.com\")": [
-    "harmlos"
-  ],
-  "<b>Fett</b>": [
-    "harmlos"
-  ],
-  "@Angriff": [
-    "harmlos"
-  ]
-}
+[
+  {
+    "name": "Test gültig",
+    "beschreibung": "harmlos"
+  },
+  {
+    "name": "Auch gültig",
+    "beschreibung": "=SUMME(1+1) – das = am Anfang wird entfernt"
+  },
+  {
+    "name": "=HYPERLINK(\"https://example.com\")",
+    "beschreibung": "harmlos"
+  },
+  {
+    "name": "+plus",
+    "beschreibung": ""
+  },
+  {
+    "name": "-minus",
+    "beschreibung": ""
+  },
+  {
+    "name": "@Angriff",
+    "beschreibung": ""
+  },
+  {
+    "name": "<b>Fett</b>",
+    "beschreibung": ""
+  },
+  {
+    "name": "<script>alert(1)</script>",
+    "beschreibung": ""
+  },
+  {
+    "name": "Steuerzeichen",
+    "beschreibung": "Zeile\u0000mit Nullbyte"
+  },
+  {
+    "name": "Zu lang",
+    "beschreibung": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  },
+  {
+    "name": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+    "beschreibung": ""
+  }
+]
