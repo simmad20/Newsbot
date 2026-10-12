@@ -1,0 +1,75 @@
+# ═══════════════════════════════════════════════════════════════════════════
+#  config.toml – Einstellungen des News-Bots (Beispiel mit Testwerten)
+# ═══════════════════════════════════════════════════════════════════════════
+#
+#  So benutzt du diese Datei:
+#    1. Kopieren:   cp config.beispiel.toml config.toml      (Windows: copy …)
+#    2. In config.toml die Testwerte durch deine echten ersetzen.
+#    3. Bot starten. Ohne config.toml startet er nicht („Konfigurationsdatei fehlt“).
+#
+#  config.toml ist GEHEIM (Bot-Token, API-Schlüssel) und wird nie auf GitHub
+#  hochgeladen – das verhindert die .gitignore. Diese Beispieldatei enthält nur
+#  Testwerte und darf deshalb im Repository liegen.
+#
+#  TOML in 30 Sekunden:
+#    name = "Text"        Texte immer in Anführungszeichen
+#    zahl = 15            Zahlen ohne Anführungszeichen
+#    schalter = true      ja/nein: true oder false (klein geschrieben)
+#    [abschnitt]          alles darunter gehört zu diesem Abschnitt – bis zum nächsten [ … ]
+#    # Kommentar          wird ignoriert
+#  Jeder Name darf pro Abschnitt nur einmal vorkommen.
+#
+#  Pflicht ist nur: Webseite ([dashboard]) ODER Discord. Alles andere hat
+#  Standardwerte – die Zeilen dafür kannst du auch weglassen.
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+# ---------------------------------------------------------------- Allgemein
+
+# Discord ist freiwillig. Leer lassen = kein Discord.
+# Webhook-URL bekommst du in Discord: Kanal → Einstellungen → Integrationen → Webhooks.
+discord_webhook = ""
+# Eigener Kanal nur für Fehlermeldungen (leer = gleicher Kanal wie oben).
+discord_webhook_fehler = ""
+
+# Zeitzone für Wochentage und Uhrzeiten (Liste: „tz database“, z. B. Europe/Berlin).
+zeitzone = "Europe/Vienna"
+
+# Wie oft geprüft wird, in Minuten (5–240).
+# Gilt ohne Neustart, sobald du die Datei speicherst – auch auf der Webseite änderbar.
+intervall_minuten = 15
+
+# Wie alt ein Artikel höchstens sein darf, damit er noch gemeldet wird, in Stunden (1–168).
+max_alter_stunden = 24
+
+# true = Benachrichtigung nur für Artikel mit Tags; auf der Seite stehen trotzdem alle.
+nur_mit_tags = false
+
+# Höchstens so viele Benachrichtigungen pro Prüfung – der Rest kommt bei der nächsten.
+max_meldungen_pro_lauf = 25
+
+
+# ---------------------------------------------------------------- Webseite auf Render
+
+[dashboard]
+# Adresse deiner Seite – oben im Render-Dienst „newsbot“. Muss mit https:// beginnen.
+url = "https://dein-newsbot.onrender.com"
+# Render → Dienst „newsbot“ → Environment → BOT_TOKEN (mindestens 32 Zeichen).
+bot_token = "TESTWERT-bitte-durch-den-echten-BOT_TOKEN-ersetzen"
+# Wie oft sich der Bot bei der Seite meldet, in Sekunden (mindestens 10).
+sync_sekunden = 30
+
+
+# ---------------------------------------------------------------- Tags per KI
+
+[llm]
+# API-Schlüssel – ohne ihn kommen die Artikel ohne Tags (und ohne Themenfilter).
+#   DeepSeek: platform.deepseek.com → API Keys       (beginnt mit sk-)
+#   Claude:   console.anthropic.com → API Keys       (beginnt mit sk-ant-, zusätzlich: pip install anthropic)
+api_key = "sk-TESTWERT-hier-deinen-schluessel-eintragen"
+
+# Freiwillig – ohne diese Zeilen gelten die Standardwerte:
+# anbieter = "deepseek"            # "deepseek" oder "anthropic"; sonst am Schlüssel erkannt
+# modell = "deepseek-v4-flash"     # Standard: deepseek-v4-flash bzw. claude-opus-5-5
+# effort = "low"                   # nur Claude: low, medium oder high
+# thema = "Cyber und Technologie"  # Themenfilter; thema = "" schaltet ihn aus
