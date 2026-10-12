@@ -386,6 +386,148 @@ input::placeholder { color: var(--leise); }
 .tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
 .tags li { padding: 2px 9px; border-radius: 4px; background: var(--chip); color: var(--chip-text); font-size: 13px; }
 .tags li.tags-mehr { background: none; color: var(--leise); }
+.tags li:has(.tag-knopf) { padding: 0; background: none; }
+.tag-knopf {
+  padding: 2px 9px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: var(--chip);
+  color: var(--chip-text);
+  font-size: 13px;
+  line-height: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.tag-knopf:hover { border-color: rgba(245, 165, 36, 0.45); color: var(--text-hell); }
+.tag-knopf[aria-expanded="true"] { border-color: var(--akzent); background: rgba(245, 165, 36, 0.14); color: var(--text-hell); }
+
+/* ---- Tag-Pfad: Karte am Tag (PC) bzw. Blatt von unten (Handy) */
+
+.tag-pfad {
+  width: min(380px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  margin: 0;
+  padding: 0;
+  overflow: visible;
+  border: 1px solid var(--rand);
+  border-radius: 16px;
+  background:
+    radial-gradient(120% 80% at 0% 0%, rgba(245, 165, 36, 0.10), transparent 55%),
+    linear-gradient(180deg, #1b2639, var(--leiste));
+  color: var(--text);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 28px 70px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(0, 0, 0, 0.2);
+}
+.tag-pfad[open] { position: fixed; inset: auto; animation: pfad-auf 0.18s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.tag-pfad::backdrop { background: rgba(6, 10, 18, 0.28); }
+.tag-pfad::before {  /* kleines Dreieck zum angeklickten Tag */
+  content: "";
+  position: absolute;
+  left: calc(var(--pfeil-x, 50%) - 7px);
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--rand);
+  background: #1b2639;
+  transform: rotate(45deg);
+}
+.tag-pfad[data-seite="unten"]::before { top: -8px; border-right: 0; border-bottom: 0; }
+.tag-pfad[data-seite="oben"]::before { bottom: -8px; border-left: 0; border-top: 0; background: var(--leiste); }
+.tag-pfad-inhalt { position: relative; display: flex; flex-direction: column; gap: 16px; max-height: inherit; padding: 18px 18px 16px; overflow-y: auto; }
+.tag-pfad-griff { display: none; }
+
+.tag-pfad-kopf { display: flex; align-items: flex-start; gap: 12px; }
+.tag-pfad-symbol {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  background: linear-gradient(145deg, rgba(245, 165, 36, 0.28), rgba(245, 165, 36, 0.08));
+  color: var(--akzent);
+  box-shadow: 0 0 0 1px rgba(245, 165, 36, 0.3) inset;
+}
+.tag-pfad-titel { flex: 1; min-width: 0; }
+.tag-pfad-oberzeile { font-size: 11px; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase; color: var(--leise); }
+.tag-pfad-titel h2 { margin-top: 2px; font-size: 19px; font-weight: 600; line-height: 1.25; color: var(--text-hell); overflow-wrap: anywhere; }
+.tag-pfad-kopf .symbol-knopf { margin: -6px -8px 0 0; }
+
+.tag-pfad-weg {  /* die Kurzform zum schnellen Lesen: A → B → C */
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 6px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.18);
+  font-size: 12.5px;
+  color: var(--leise);
+}
+.tag-pfad-weg .pfeil { color: rgba(245, 165, 36, 0.7); }
+.tag-pfad-weg span:last-child { color: var(--akzent); font-weight: 600; }
+
+.pfad-block { display: flex; flex-direction: column; gap: 6px; }
+.pfad-block + .pfad-block { padding-top: 14px; border-top: 1px dashed var(--linie); }
+.pfad-nummer { font-size: 12px; font-weight: 600; color: var(--leise); }
+
+.pfad-baum { margin: 0; padding: 0; list-style: none; }
+.pfad-stufe {
+  --einzug: 20px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 34px;
+  padding-left: calc(var(--ebene) * var(--einzug));
+  animation: pfad-stufe 0.32s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+  animation-delay: calc(var(--ebene) * 45ms + 60ms);
+}
+/* Verbindungslinie: von oben herab und dann waagrecht zum Knoten (wie ein Ordnerbaum) */
+.pfad-stufe:not(.wurzel)::before {
+  content: "";
+  position: absolute;
+  left: calc((var(--ebene) - 1) * var(--einzug) + 6px);
+  top: -10px;
+  width: calc(var(--einzug) - 4px);
+  height: 27px;
+  border-left: 1.5px solid var(--rand);
+  border-bottom: 1.5px solid var(--rand);
+  border-bottom-left-radius: 8px;
+}
+.pfad-knoten {
+  position: relative;
+  z-index: 1;
+  flex: none;
+  width: 13px;
+  height: 13px;
+  border: 2px solid var(--grau);
+  border-radius: 50%;
+  background: var(--leiste);
+}
+.pfad-name { min-width: 0; font-size: 14px; color: var(--sekundaer); overflow-wrap: anywhere; }
+.pfad-stufe.wurzel .pfad-name { font-weight: 600; color: var(--text); }
+.pfad-stufe.ziel .pfad-knoten {
+  border-color: var(--akzent);
+  background: var(--akzent);
+  box-shadow: 0 0 0 4px rgba(245, 165, 36, 0.18), 0 0 14px rgba(245, 165, 36, 0.55);
+}
+.pfad-stufe.ziel .pfad-name {
+  padding: 4px 11px;
+  border: 1px solid rgba(245, 165, 36, 0.45);
+  border-radius: 999px;
+  background: rgba(245, 165, 36, 0.13);
+  color: var(--text-hell);
+  font-weight: 600;
+}
+.pfad-stufe.ziel.wurzel .pfad-name { margin-left: 0; }
+
+.tag-pfad-notiz { font-size: 13px; color: var(--leise); }
+.tag-pfad-fuss { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding-top: 12px; border-top: 1px solid var(--linie); }
+.tag-pfad-info { font-size: 12.5px; color: var(--leise); }
+.tag-pfad-fuss .knopf { min-height: 36px; padding: 0 12px; font-size: 13px; }
+
+@keyframes pfad-auf { from { opacity: 0; transform: translateY(-4px) scale(0.97); } }
+@keyframes pfad-stufe { from { opacity: 0; transform: translateX(-6px); } }
+@keyframes pfad-blatt { from { transform: translateY(100%); } }
 .details-knopf {
   display: inline-flex;
   align-items: center;
@@ -790,6 +932,25 @@ textarea { resize: vertical; line-height: 1.5; }
 .login-box input { width: 100%; }
 .login-box .knopf { width: 100%; margin-top: 6px; }
 .fehlertext { color: var(--fehler); font-size: 14px; }
+
+/* Handy: Blatt von unten, mit Griff */
+@media (max-width: 520px) {
+  .tag-pfad[open] {
+    inset: auto 0 0 0;
+    width: 100%;
+    max-width: none;
+    max-height: 85dvh;
+    border-width: 1px 0 0;
+    border-radius: 20px 20px 0 0;
+    animation: pfad-blatt 0.26s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .tag-pfad::before { display: none; }
+  .tag-pfad::backdrop { background: rgba(6, 10, 18, 0.6); backdrop-filter: blur(2px); }
+  .tag-pfad-inhalt { padding: 10px 18px calc(18px + env(safe-area-inset-bottom)); }
+  .tag-pfad-griff { display: block; align-self: center; width: 38px; height: 4px; border-radius: 4px; background: var(--rand); }
+  .pfad-stufe { --einzug: 18px; min-height: 38px; }
+  .tag-pfad-fuss .knopf { flex: 1; justify-content: center; min-height: 44px; }
+}
 
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }

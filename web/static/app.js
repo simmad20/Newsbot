@@ -457,7 +457,7 @@ function artikelKarte(a, kompakt) {
         a.weg && a.weg !== "feed" ? el("span", { class: "leise" }, ` · über ${WEG_TEXT[a.weg] || a.weg}`) : null),
       ...detailFeld("Benachrichtigung", benachrichtigung),
       ...detailFeld("Tags", a.tags.length
-        ? el("ul", { class: "tags" }, ...a.tags.map((t) => el("li", {}, t)))
+        ? el("ul", { class: "tags" }, ...a.tags.map((t) => el("li", {}, tagKnopf(t, a.url, "d"))))
         : el("span", { class: "leise" }, "keine"))),
     el("div", { class: "zusammenfassung" },
       el("h4", {}, "Zusammenfassung laut Feed"),
@@ -483,7 +483,7 @@ function artikelKarte(a, kompakt) {
       meta.length ? el("p", { class: "artikel-meta" }, meta.join(" · ")) : null,
       a.teaser && !offen ? el("p", { class: "teaser" }, a.teaser) : null,
       el("div", { class: "artikel-fuss" },
-        a.tags.length && !offen ? el("ul", { class: "tags", "aria-label": "Tags" }, ...a.tags.slice(0, 6).map((t) => el("li", {}, t)),
+        a.tags.length && !offen ? el("ul", { class: "tags", "aria-label": "Tags" }, ...a.tags.slice(0, 6).map((t) => el("li", {}, tagKnopf(t, a.url, "k"))),
           a.tags.length > 6 ? el("li", { class: "tags-mehr", title: "Alle Tags unter „Details“" }, `+${a.tags.length - 6}`) : null) : null,
         abhaken,
         el("button", knopfAttr, offen ? "Weniger" : "Details", symbol(ICON.pfeil, 16))),
@@ -528,7 +528,118 @@ $("alle-abhaken").addEventListener("click", () => {
   }
 });
 
+// ---------------------------------------------------------------- Tag-Pfad: wo liegt ein Tag im Tag-Baum?
+
+function tagKnopf(name, url, wo) {
+  return el("button", { type: "button", class: "tag-knopf", "data-tag-pfad": name, "aria-haspopup": "dialog",
+    title: "Pfad im Tag-Baum anzeigen", "data-fokus": `t|${wo}|${url}|${name}` }, name);
+}
+
+/** Pfade laut Beschreibung in der Tag-Liste („A > B > Tag“, mehrere mit „ | “). Ohne Pfad: nur der Tag selbst. */
+function tagPfade(name) {
+  const t = (daten.listen?.tags || []).find((x) => x.name.toLowerCase() === name.toLowerCase());
+  const pfade = [];
+  let notiz = "";
+  for (const teil of (t?.beschreibung || "").split(" | ").filter(Boolean)) {
+    const pfad = teil.split(" > ").map((x) => x.trim());
+    if (pfad.length > 1 && pfad.at(-1).toLowerCase() === name.toLowerCase()) pfade.push(pfad);
+    else notiz = teil;  // freie Beschreibung statt Pfad
+  }
+  return { pfade: pfade.length ? pfade : [[t ? t.name : name]], notiz, bekannt: Boolean(t) };
+}
+
+let tagPfadAusloeser = null;
+
+function zeigeTagPfad(knopf) {
+  const name = knopf.dataset.tagPfad;
+  const { pfade, notiz, bekannt } = tagPfade(name);
+  const dialog = $("tag-pfad");
+  const treffer = daten.artikel.filter((a) => a.tags.includes(name)).length;
+  const tiefe = Math.max(...pfade.map((p) => p.length));
+
+  const baum = (pfad) => el("ol", { class: "pfad-baum" }, ...pfad.map((stufe, i) => {
+    const ziel = i === pfad.length - 1;
+    const attrs = { class: `pfad-stufe${ziel ? " ziel" : ""}${i === 0 ? " wurzel" : ""}` };
+    if (ziel) attrs["aria-current"] = "true";
+    const zeile = el("li", attrs,
+      el("span", { class: "pfad-knoten", "aria-hidden": "true" }),
+      el("span", { class: "pfad-name" }, stufe),
+      ziel ? null : el("span", { class: "nur-vorlesen" }, `, Ebene ${i + 1}`));
+    zeile.style.setProperty("--ebene", i);  // per CSSOM – die Seite erlaubt keine style-Attribute (CSP)
+    return zeile;
+  }));
+
+  dialog.replaceChildren(el("div", { class: "tag-pfad-inhalt" },
+    el("span", { class: "tag-pfad-griff", "aria-hidden": "true" }),
+    el("header", { class: "tag-pfad-kopf" },
+      el("span", { class: "tag-pfad-symbol", "aria-hidden": "true" }, symbol(ICON.etikett, 18)),
+      el("div", { class: "tag-pfad-titel" },
+        el("p", { class: "tag-pfad-oberzeile" }, pfade.length > 1 ? `${pfade.length} Pfade im Tag-Baum` : "Pfad im Tag-Baum"),
+        el("h2", { id: "tag-pfad-name" }, name)),
+      el("button", { type: "button", class: "symbol-knopf", "data-schliessen": "", "aria-label": "Schließen" }, symbol(ICON.x))),
+    pfade.length === 1 && pfade[0].length > 1 ? el("p", { class: "tag-pfad-weg", "aria-hidden": "true" },
+      ...pfade[0].flatMap((stufe, i) => [i ? el("span", { class: "pfeil" }, "→") : null, el("span", {}, stufe)])) : null,
+    ...pfade.map((pfad, n) => el("section", { class: "pfad-block", "aria-label": pfade.length > 1 ? `Pfad ${n + 1}` : "Pfad" },
+      pfade.length > 1 ? el("p", { class: "pfad-nummer" }, `Pfad ${n + 1}`) : null,
+      baum(pfad))),
+    notiz ? el("p", { class: "tag-pfad-notiz" }, notiz) : null,
+    !bekannt ? el("p", { class: "tag-pfad-notiz" }, daten.listen
+      ? "Dieser Tag steht nicht mehr in der Tag-Liste."
+      : "Den Pfad zeigt die Seite, sobald der Bot verbunden ist.") : null,
+    el("footer", { class: "tag-pfad-fuss" },
+      el("span", { class: "tag-pfad-info" }, `${tiefe > 1 ? `Ebene ${tiefe}` : "Oberste Ebene"} · ${anzahl(treffer, "Artikel", "Artikel")}`),
+      el("button", { type: "button", class: "knopf mit-symbol", "data-tag-filter": name },
+        symbol(ICON.filter, 16), el("span", {}, "Nur diese Artikel")))));
+
+  tagPfadAusloeser = knopf;
+  knopf.setAttribute("aria-expanded", "true");
+  dialog.showModal();
+  platziereTagPfad(dialog, knopf);
+}
+
+function platziereTagPfad(dialog, knopf) {
+  dialog.style.left = dialog.style.top = "";
+  if (matchMedia("(max-width: 520px)").matches) return;  // Handy: Blatt von unten (CSS)
+  const r = knopf.getBoundingClientRect();
+  const breite = dialog.offsetWidth;
+  const hoehe = dialog.offsetHeight;
+  const links = Math.min(Math.max(16, r.left + r.width / 2 - breite / 2), innerWidth - breite - 16);
+  const unten = r.bottom + 10 + hoehe <= innerHeight - 16;
+  dialog.style.left = `${links}px`;
+  dialog.style.top = `${unten ? r.bottom + 10 : Math.max(16, r.top - 10 - hoehe)}px`;
+  dialog.dataset.seite = unten ? "unten" : "oben";
+  dialog.style.setProperty("--pfeil-x", `${Math.min(Math.max(24, r.left + r.width / 2 - links), breite - 24)}px`);
+}
+
+$("tag-pfad").addEventListener("close", () => {
+  if (tagPfadAusloeser) {
+    tagPfadAusloeser.setAttribute("aria-expanded", "false");
+    if (tagPfadAusloeser.isConnected) tagPfadAusloeser.focus({ preventScroll: true });
+  }
+  tagPfadAusloeser = null;
+});
+$("tag-pfad").addEventListener("click", (e) => {
+  const dialog = $("tag-pfad");
+  if (e.target === dialog || e.target.closest("[data-schliessen]")) { dialog.close(); return; }
+  const filter = e.target.closest("button[data-tag-filter]");
+  if (!filter) return;
+  dialog.close();
+  $("filter-tag").value = filter.dataset.tagFilter;
+  sichtbar = PRO_SEITE;
+  zeichneTicker();
+  $("bereich-artikel").scrollIntoView({ behavior: "smooth", block: "start" });
+});
+addEventListener("resize", () => { if ($("tag-pfad").open) $("tag-pfad").close(); });
+addEventListener("scroll", () => {
+  if ($("tag-pfad").open && !matchMedia("(max-width: 520px)").matches) $("tag-pfad").close();
+}, { passive: true });
+
 $("ticker").addEventListener("click", async (e) => {
+  const tagPfad = e.target.closest("button[data-tag-pfad]");
+  if (tagPfad) {
+    zeigeTagPfad(tagPfad);
+    return;
+  }
   const haken = e.target.closest("button[data-abhaken]");
   if (haken) {
     const a = daten.artikel.find((x) => x.url === haken.dataset.abhaken);
