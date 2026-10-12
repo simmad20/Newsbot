@@ -1,14 +1,2173 @@
-{
-  "Cyber": [
-    "cyber*", "hacker*", "ransomware", "phishing", "malware", "schadsoftware", "trojaner*",
-    "botnetz*", "ddos", "datenleck*", "sicherheitslücke*", "zero-day", "darknet", "spyware", "it-sicherheit"
-  ],
-  "KriMiSi": [
-    "krieg*", "militär*", "bundesheer*", "bundeswehr*", "nato", "armee*", "soldat*", "verteidigung*",
-    "terror*", "anschlag*", "krise*", "zivilschutz*", "katastrophenschutz*", "sanktion*", "geheimdienst*", "spionage*"
-  ],
-  "InnoTech": [
-    "innovation*", "technologie*", "künstliche intelligenz", "KI", "chatgpt", "openai", "sprachmodell*",
-    "roboter*", "robotik", "quanten*", "halbleiter*", "mikrochip*", "start-up*", "startup*", "selbstfahrend*"
-  ]
-}
+[
+  {
+    "tag": "Struktur",
+    "untertags": [
+      {
+        "tag": "[S]1 Cyber"
+      },
+      {
+        "tag": "[S]2 KriMiSi"
+      },
+      {
+        "tag": "[S]3 InnoTech"
+      }
+    ]
+  },
+  {
+    "tag": "Cyber",
+    "untertags": [
+      {
+        "tag": "Big Data"
+      },
+      {
+        "tag": "Cloud"
+      },
+      {
+        "tag": "Datenschutz"
+      },
+      {
+        "tag": "IoT"
+      },
+      {
+        "tag": "Künstliche Intelligenz"
+      },
+      {
+        "tag": "Metaverse"
+      },
+      {
+        "tag": "Cyber Security",
+        "untertags": [
+          {
+            "tag": "Antivirenprogramm"
+          },
+          {
+            "tag": "Authentifizierung"
+          },
+          {
+            "tag": "Backups"
+          },
+          {
+            "tag": "Cyberverteidigung"
+          },
+          {
+            "tag": "Datenleck"
+          },
+          {
+            "tag": "Firewall"
+          },
+          {
+            "tag": "Sicherheitslücke"
+          },
+          {
+            "tag": "VPN"
+          },
+          {
+            "tag": "Resilienz"
+          },
+          {
+            "tag": "Pen-Testing"
+          },
+          {
+            "tag": "Fuzzing"
+          },
+          {
+            "tag": "Virtualisierung"
+          },
+          {
+            "tag": "Netzwerksegmentierung"
+          }
+        ]
+      },
+      {
+        "tag": "Cyber Infrastruktur",
+        "untertags": [
+          {
+            "tag": "Botnet"
+          },
+          {
+            "tag": "Server"
+          },
+          {
+            "tag": "Hardware",
+            "untertags": [
+              {
+                "tag": "Bauteil"
+              },
+              {
+                "tag": "Mobilgerät"
+              },
+              {
+                "tag": "Personal Computer"
+              },
+              {
+                "tag": "Supercomputer"
+              }
+            ]
+          },
+          {
+            "tag": "Netzwerk",
+            "untertags": [
+              {
+                "tag": "Darknet"
+              },
+              {
+                "tag": "TOR-Netzwerk"
+              }
+            ]
+          },
+          {
+            "tag": "Rechenzentrum"
+          }
+        ]
+      },
+      {
+        "tag": "Cyberangriff",
+        "untertags": [
+          {
+            "tag": "Brute-Force-Angriff"
+          },
+          {
+            "tag": "DoS bzw. DDoS"
+          },
+          {
+            "tag": "Social Engineering"
+          },
+          {
+            "tag": "Schadsoftware",
+            "untertags": [
+              {
+                "tag": "Computervirus"
+              },
+              {
+                "tag": "Ransomware"
+              },
+              {
+                "tag": "Spyware"
+              }
+            ]
+          },
+          {
+            "tag": "APT"
+          },
+          {
+            "tag": "Phishing"
+          }
+        ]
+      },
+      {
+        "tag": "Kryptographie",
+        "untertags": [
+          {
+            "tag": "Verschlüsselung"
+          },
+          {
+            "tag": "Blockchain",
+            "untertags": [
+              {
+                "tag": "Kryptowährung"
+              },
+              {
+                "tag": "NFT"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "tag": "Software",
+        "untertags": [
+          {
+            "tag": "Open Source Software"
+          },
+          {
+            "tag": "Betriebssystem",
+            "untertags": [
+              {
+                "tag": "Android"
+              },
+              {
+                "tag": "Linux"
+              },
+              {
+                "tag": "Mac OS"
+              },
+              {
+                "tag": "Microsoft Windows"
+              },
+              {
+                "tag": "iOS"
+              }
+            ]
+          },
+          {
+            "tag": "Update"
+          },
+          {
+            "tag": "Upgrade"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "tag": "KriMiSi",
+    "untertags": [
+      {
+        "tag": "Konfliktgebiet"
+      },
+      {
+        "tag": "Krisen & Konflikte",
+        "untertags": [
+          {
+            "tag": "Atomarer Konflikt"
+          },
+          {
+            "tag": "Blackout"
+          },
+          {
+            "tag": "Bürgerkrieg"
+          },
+          {
+            "tag": "Cyberkrieg"
+          },
+          {
+            "tag": "Epidemie & Pandemie"
+          },
+          {
+            "tag": "Grenzkonflikt"
+          },
+          {
+            "tag": "Hybrider Krieg"
+          },
+          {
+            "tag": "Informationskrieg"
+          },
+          {
+            "tag": "innerstaatlicher Konflikt"
+          },
+          {
+            "tag": "Klimawandel"
+          },
+          {
+            "tag": "Krieg"
+          },
+          {
+            "tag": "Naturkatastrophe"
+          },
+          {
+            "tag": "Religionskrieg"
+          },
+          {
+            "tag": "Terrorismus"
+          },
+          {
+            "tag": "Wirtschaftskonflikt",
+            "untertags": [
+              {
+                "tag": "Wirtschaftssanktion"
+              }
+            ]
+          },
+          {
+            "tag": "Wirtschaftskrise"
+          },
+          {
+            "tag": "zwischenstaatlicher Konflikt"
+          },
+          {
+            "tag": "Zivilschutz"
+          }
+        ]
+      },
+      {
+        "tag": "Militär",
+        "untertags": [
+          {
+            "tag": "ABC-Abwehr"
+          },
+          {
+            "tag": "Artillerie"
+          },
+          {
+            "tag": "Aufklärung"
+          },
+          {
+            "tag": "CBRN"
+          },
+          {
+            "tag": "CiMil"
+          },
+          {
+            "tag": "Cyberstreitkräfte"
+          },
+          {
+            "tag": "Landstreitkräfte"
+          },
+          {
+            "tag": "Luftstreitkräfte"
+          },
+          {
+            "tag": "mil. Ausbildung"
+          },
+          {
+            "tag": "mil. Budget und Kosten"
+          },
+          {
+            "tag": "mil. Fähigkeiten"
+          },
+          {
+            "tag": "mil. Logistik"
+          },
+          {
+            "tag": "Raketenstreitkräfte"
+          },
+          {
+            "tag": "Seestreitkräfte"
+          },
+          {
+            "tag": "Spezialkräfte"
+          },
+          {
+            "tag": "Weltraumstreitkräfte"
+          },
+          {
+            "tag": "Flugabwehr"
+          }
+        ]
+      },
+      {
+        "tag": "militärische Infrastruktur",
+        "untertags": [
+          {
+            "tag": "Hafenanlage"
+          },
+          {
+            "tag": "Militärbasis"
+          },
+          {
+            "tag": "Militärflugplatz"
+          },
+          {
+            "tag": "Radarstation"
+          }
+        ]
+      },
+      {
+        "tag": "Militärische Handlung",
+        "untertags": [
+          {
+            "tag": "Angriff",
+            "untertags": [
+              {
+                "tag": "Artillerieangriff"
+              },
+              {
+                "tag": "Bodenangriff"
+              },
+              {
+                "tag": "Luftangriff"
+              },
+              {
+                "tag": "Raketenangriff"
+              },
+              {
+                "tag": "Weltraumangriff"
+              }
+            ]
+          },
+          {
+            "tag": "Gefecht"
+          },
+          {
+            "tag": "Manöver"
+          },
+          {
+            "tag": "Mobilmachung"
+          },
+          {
+            "tag": "Truppenbewegung"
+          },
+          {
+            "tag": "Verteidigung"
+          },
+          {
+            "tag": "Waffenstillstand"
+          }
+        ]
+      },
+      {
+        "tag": "Rüstungsmaterial",
+        "untertags": [
+          {
+            "tag": "Waffe",
+            "untertags": [
+              {
+                "tag": "Atomwaffe"
+              },
+              {
+                "tag": "IED"
+              },
+              {
+                "tag": "Raketenwaffe"
+              },
+              {
+                "tag": "unkonventionelle Waffe"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "tag": "InnoTech",
+    "untertags": [
+      {
+        "tag": "Innovationen",
+        "untertags": [
+          {
+            "tag": "mil. Innovation"
+          }
+        ]
+      },
+      {
+        "tag": "Gesellschaftlicher Wandel",
+        "untertags": [
+          {
+            "tag": "Dekarbonisierung"
+          },
+          {
+            "tag": "Demografischer Wandel"
+          },
+          {
+            "tag": "Digitalisierung und digitale Kultur"
+          },
+          {
+            "tag": "Food"
+          },
+          {
+            "tag": "New Economic Patterns"
+          },
+          {
+            "tag": "Öffentliche Fürsorge und Wohlfahrt"
+          },
+          {
+            "tag": "Urbaner Wandel"
+          }
+        ]
+      },
+      {
+        "tag": "Technologie",
+        "untertags": [
+          {
+            "tag": "3D-Druck"
+          },
+          {
+            "tag": "Autonomes System"
+          },
+          {
+            "tag": "Biotechnologie"
+          },
+          {
+            "tag": "Biowerkstoff"
+          },
+          {
+            "tag": "Erweiterte Realität (AR)"
+          },
+          {
+            "tag": "Human Enhancement"
+          },
+          {
+            "tag": "Luft- und Raumfahrttechnik"
+          },
+          {
+            "tag": "Materialforschung"
+          },
+          {
+            "tag": "Mobilität"
+          },
+          {
+            "tag": "Nachhaltige Technologie"
+          },
+          {
+            "tag": "Nanotechnologie"
+          },
+          {
+            "tag": "Quantentechnologie"
+          },
+          {
+            "tag": "Robotik"
+          },
+          {
+            "tag": "Simulation"
+          },
+          {
+            "tag": "Virtuelle Realität (VR)"
+          },
+          {
+            "tag": "Weltraumtechnologie"
+          },
+          {
+            "tag": "Biometrie"
+          }
+        ]
+      },
+      {
+        "tag": "Forschung & Entwicklung",
+        "untertags": [
+          {
+            "tag": "Forschungsprogramm"
+          },
+          {
+            "tag": "Öffentliche Forschung"
+          },
+          {
+            "tag": "Private Forschung"
+          },
+          {
+            "tag": "Stressforschung"
+          },
+          {
+            "tag": "mil. Forschung",
+            "untertags": [
+              {
+                "tag": "Operations Research"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "tag": "Allgemeine Tags",
+    "untertags": [
+      {
+        "tag": "Ausbildung"
+      },
+      {
+        "tag": "Int. Zusammenarbeit",
+        "untertags": [
+          {
+            "tag": "Humanitäre Hilfe"
+          }
+        ]
+      },
+      {
+        "tag": "Navigation"
+      },
+      {
+        "tag": "Recht",
+        "untertags": [
+          {
+            "tag": "Menschenrechte"
+          }
+        ]
+      },
+      {
+        "tag": "Soziale Medien"
+      },
+      {
+        "tag": "Spionage"
+      },
+      {
+        "tag": "Strategie"
+      },
+      {
+        "tag": "Ereignis",
+        "untertags": [
+          {
+            "tag": "Anschlag"
+          },
+          {
+            "tag": "Demonstration"
+          },
+          {
+            "tag": "Staatsstreich"
+          },
+          {
+            "tag": "Todesfall"
+          },
+          {
+            "tag": "Unfall"
+          },
+          {
+            "tag": "Wahl"
+          },
+          {
+            "tag": "Souveränitätsverletzung"
+          }
+        ]
+      },
+      {
+        "tag": "Gesellschaft",
+        "untertags": [
+          {
+            "tag": "Extremismus und Radikalismus"
+          },
+          {
+            "tag": "Gesellschaftliche Spaltung"
+          },
+          {
+            "tag": "Gesundheit"
+          },
+          {
+            "tag": "Migration"
+          },
+          {
+            "tag": "Privatsphäre"
+          },
+          {
+            "tag": "Sport"
+          }
+        ]
+      },
+      {
+        "tag": "Kriminalität",
+        "untertags": [
+          {
+            "tag": "Erpressung"
+          },
+          {
+            "tag": "Korruption"
+          },
+          {
+            "tag": "Piraterie"
+          },
+          {
+            "tag": "Schusswaffengebrauch"
+          },
+          {
+            "tag": "Hochverrat"
+          },
+          {
+            "tag": "Gewalt"
+          }
+        ]
+      },
+      {
+        "tag": "Umwelt",
+        "untertags": [
+          {
+            "tag": "Rohstoffe"
+          }
+        ]
+      },
+      {
+        "tag": "Wirtschaft",
+        "untertags": [
+          {
+            "tag": "Rüstungswirtschaft"
+          },
+          {
+            "tag": "Handel"
+          }
+        ]
+      },
+      {
+        "tag": "Akteur",
+        "untertags": [
+          {
+            "tag": "Forschungsorganisation"
+          },
+          {
+            "tag": "Hacker"
+          },
+          {
+            "tag": "paramilitärische Organisation"
+          },
+          {
+            "tag": "Privatperson"
+          },
+          {
+            "tag": "Unternehmen"
+          },
+          {
+            "tag": "Internationale Organisation",
+            "untertags": [
+              {
+                "tag": "Afrikanische Union"
+              },
+              {
+                "tag": "Arabische Liga"
+              },
+              {
+                "tag": "ASEAN"
+              },
+              {
+                "tag": "ECOWAS"
+              },
+              {
+                "tag": "EU",
+                "untertags": [
+                  {
+                    "tag": "EUROPOL"
+                  },
+                  {
+                    "tag": "FRONTEX"
+                  },
+                  {
+                    "tag": "GSVP"
+                  },
+                  {
+                    "tag": "PESCO"
+                  }
+                ]
+              },
+              {
+                "tag": "G7"
+              },
+              {
+                "tag": "Golf-Kooperationsrat"
+              },
+              {
+                "tag": "GUS"
+              },
+              {
+                "tag": "IAEO"
+              },
+              {
+                "tag": "MERCOSUR"
+              },
+              {
+                "tag": "NAFTA"
+              },
+              {
+                "tag": "NATO"
+              },
+              {
+                "tag": "OIC"
+              },
+              {
+                "tag": "OPEC"
+              },
+              {
+                "tag": "OSZE"
+              },
+              {
+                "tag": "OVKS"
+              },
+              {
+                "tag": "SCO"
+              },
+              {
+                "tag": "UNICEF"
+              },
+              {
+                "tag": "UNO",
+                "untertags": [
+                  {
+                    "tag": "UNHCR"
+                  },
+                  {
+                    "tag": "UNSC"
+                  }
+                ]
+              },
+              {
+                "tag": "WHO"
+              },
+              {
+                "tag": "INTERPOL"
+              },
+              {
+                "tag": "OPCW"
+              },
+              {
+                "tag": "IStGH"
+              }
+            ]
+          },
+          {
+            "tag": "Irreguläre Kräfte",
+            "untertags": [
+              {
+                "tag": "Terrorgruppe"
+              }
+            ]
+          },
+          {
+            "tag": "Kriminelle Organisation",
+            "untertags": [
+              {
+                "tag": "Hackergruppe"
+              },
+              {
+                "tag": "Organisierte Kriminalität"
+              }
+            ]
+          },
+          {
+            "tag": "staatliche Organisation",
+            "untertags": [
+              {
+                "tag": "Feuerwehr"
+              },
+              {
+                "tag": "Geheim- und Nachrichtendienst"
+              },
+              {
+                "tag": "Justiz"
+              },
+              {
+                "tag": "Polizei"
+              },
+              {
+                "tag": "Rettungsdienst"
+              },
+              {
+                "tag": "Verwaltung"
+              }
+            ]
+          },
+          {
+            "tag": "öffentliche Person"
+          }
+        ]
+      },
+      {
+        "tag": "Fahrzeug",
+        "untertags": [
+          {
+            "tag": "Bodenfahrzeug",
+            "untertags": [
+              {
+                "tag": "Eisenbahn"
+              },
+              {
+                "tag": "gepanzertes Fahrzeug"
+              }
+            ]
+          },
+          {
+            "tag": "Luftfahrzeug",
+            "untertags": [
+              {
+                "tag": "Flugzeug"
+              },
+              {
+                "tag": "Hubschrauber"
+              }
+            ]
+          },
+          {
+            "tag": "Raumfahrzeug",
+            "untertags": [
+              {
+                "tag": "Raumstation"
+              },
+              {
+                "tag": "Satellit"
+              }
+            ]
+          },
+          {
+            "tag": "Unbemanntes Fahrzeug",
+            "untertags": [
+              {
+                "tag": "UAV"
+              },
+              {
+                "tag": "UGV"
+              },
+              {
+                "tag": "USV"
+              },
+              {
+                "tag": "UUV"
+              }
+            ]
+          },
+          {
+            "tag": "Wasserfahrzeug",
+            "untertags": [
+              {
+                "tag": "Schiff"
+              },
+              {
+                "tag": "Uboot"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "tag": "Infrastruktur",
+        "untertags": [
+          {
+            "tag": "Energieversorgung"
+          },
+          {
+            "tag": "Finanzsystem"
+          },
+          {
+            "tag": "Gesundheitsversorgung"
+          },
+          {
+            "tag": "Kommunikation"
+          },
+          {
+            "tag": "Konnektivität"
+          },
+          {
+            "tag": "Kritische Infrastruktur"
+          },
+          {
+            "tag": "Kulturgüter"
+          },
+          {
+            "tag": "Lebensmittelversorgung"
+          },
+          {
+            "tag": "Medien"
+          },
+          {
+            "tag": "Wasserversorgung"
+          },
+          {
+            "tag": "Industrie",
+            "untertags": [
+              {
+                "tag": "Chemie"
+              },
+              {
+                "tag": "Erdölwesen"
+              }
+            ]
+          },
+          {
+            "tag": "Transport",
+            "untertags": [
+              {
+                "tag": "Luftfahrt"
+              }
+            ]
+          },
+          {
+            "tag": "Bildungseinrichtung"
+          },
+          {
+            "tag": "Lieferketten"
+          }
+        ]
+      },
+      {
+        "tag": "Politik",
+        "untertags": [
+          {
+            "tag": "Außenpolitik"
+          },
+          {
+            "tag": "Diplomatie"
+          },
+          {
+            "tag": "Innenpolitik"
+          },
+          {
+            "tag": "Militärpolitik"
+          },
+          {
+            "tag": "Rüstungspolitik"
+          },
+          {
+            "tag": "Sicherheitspolitik",
+            "untertags": [
+              {
+                "tag": "Friedensbemühungen"
+              },
+              {
+                "tag": "Proliferation"
+              },
+              {
+                "tag": "Resilienz"
+              },
+              {
+                "tag": "Verteidigungsmaßnahmen"
+              }
+            ]
+          },
+          {
+            "tag": "AI Act"
+          },
+          {
+            "tag": "NIS"
+          },
+          {
+            "tag": "DSGVO"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "tag": "Newsinfo",
+    "untertags": [
+      {
+        "tag": "Audio"
+      },
+      {
+        "tag": "Video"
+      },
+      {
+        "tag": "Werbung"
+      },
+      {
+        "tag": "Dokumententyp",
+        "untertags": [
+          {
+            "tag": "Abstract"
+          },
+          {
+            "tag": "Ausbildungsmittel"
+          },
+          {
+            "tag": "Ausschreibung"
+          },
+          {
+            "tag": "Dissertation"
+          },
+          {
+            "tag": "Konferenzpublikation"
+          },
+          {
+            "tag": "Meinungsäußerung"
+          },
+          {
+            "tag": "News"
+          },
+          {
+            "tag": "Patent"
+          },
+          {
+            "tag": "Strategische Info"
+          },
+          {
+            "tag": "Studie"
+          }
+        ]
+      },
+      {
+        "tag": "Informationsverschmutzung",
+        "untertags": [
+          {
+            "tag": "Deepfake"
+          },
+          {
+            "tag": "Desinformation"
+          },
+          {
+            "tag": "Faktencheck"
+          },
+          {
+            "tag": "Verschwörungstheorie"
+          },
+          {
+            "tag": "Propaganda"
+          },
+          {
+            "tag": "Zensur"
+          }
+        ]
+      },
+      {
+        "tag": "zeitlicher Aspekt",
+        "untertags": [
+          {
+            "tag": "2021-2025"
+          },
+          {
+            "tag": "2026-2030"
+          },
+          {
+            "tag": "2031-2040"
+          },
+          {
+            "tag": "2041-2050"
+          },
+          {
+            "tag": "2051-später"
+          },
+          {
+            "tag": "State of the Art"
+          },
+          {
+            "tag": "Trendbrüche"
+          },
+          {
+            "tag": "Weak Signals"
+          }
+        ]
+      },
+      {
+        "tag": "geographische Lokationen",
+        "untertags": [
+          {
+            "tag": "Antarktis"
+          },
+          {
+            "tag": "Arktis"
+          },
+          {
+            "tag": "Global"
+          },
+          {
+            "tag": "kein Standort"
+          },
+          {
+            "tag": "Weltraum"
+          },
+          {
+            "tag": "Nicht/Eingeschränkt anerkannt",
+            "untertags": [
+              {
+                "tag": "Abchasien"
+              },
+              {
+                "tag": "Bergkarabach"
+              },
+              {
+                "tag": "Cookinseln"
+              },
+              {
+                "tag": "Donezk und Lugansk (Donbass)"
+              },
+              {
+                "tag": "Kosovo"
+              },
+              {
+                "tag": "Niue"
+              },
+              {
+                "tag": "Nordzypern"
+              },
+              {
+                "tag": "Palästina"
+              },
+              {
+                "tag": "Somaliland"
+              },
+              {
+                "tag": "Südossetien"
+              },
+              {
+                "tag": "Taiwan"
+              },
+              {
+                "tag": "Transnistrien"
+              },
+              {
+                "tag": "Westsahara"
+              }
+            ]
+          },
+          {
+            "tag": "Kontinente und Staaten",
+            "untertags": [
+              {
+                "tag": "Afrika",
+                "untertags": [
+                  {
+                    "tag": "Ägypten"
+                  },
+                  {
+                    "tag": "Algerien"
+                  },
+                  {
+                    "tag": "Angola"
+                  },
+                  {
+                    "tag": "Äquatorialguinea"
+                  },
+                  {
+                    "tag": "Äthiopien"
+                  },
+                  {
+                    "tag": "Benin"
+                  },
+                  {
+                    "tag": "Botsuana"
+                  },
+                  {
+                    "tag": "Burkina Faso"
+                  },
+                  {
+                    "tag": "Burundi"
+                  },
+                  {
+                    "tag": "Cabo Verde"
+                  },
+                  {
+                    "tag": "Cote d'Ivoire (Elfenbeinküste)"
+                  },
+                  {
+                    "tag": "Dschibuti"
+                  },
+                  {
+                    "tag": "Eritrea"
+                  },
+                  {
+                    "tag": "Eswatini"
+                  },
+                  {
+                    "tag": "Gabun"
+                  },
+                  {
+                    "tag": "Gambia"
+                  },
+                  {
+                    "tag": "Ghana"
+                  },
+                  {
+                    "tag": "Guinea"
+                  },
+                  {
+                    "tag": "Guinea-Bissau"
+                  },
+                  {
+                    "tag": "Kamerun"
+                  },
+                  {
+                    "tag": "Kenia"
+                  },
+                  {
+                    "tag": "Komoren"
+                  },
+                  {
+                    "tag": "Kongo, Demokratische Republik"
+                  },
+                  {
+                    "tag": "Kongo, Republik der"
+                  },
+                  {
+                    "tag": "Lesotho"
+                  },
+                  {
+                    "tag": "Liberia"
+                  },
+                  {
+                    "tag": "Libyen"
+                  },
+                  {
+                    "tag": "Madagaskar"
+                  },
+                  {
+                    "tag": "Malawi"
+                  },
+                  {
+                    "tag": "Mali"
+                  },
+                  {
+                    "tag": "Marokko"
+                  },
+                  {
+                    "tag": "Mauretanien"
+                  },
+                  {
+                    "tag": "Mauritius"
+                  },
+                  {
+                    "tag": "Mosambik"
+                  },
+                  {
+                    "tag": "Namibia"
+                  },
+                  {
+                    "tag": "Niger"
+                  },
+                  {
+                    "tag": "Nigeria"
+                  },
+                  {
+                    "tag": "Ruanda"
+                  },
+                  {
+                    "tag": "Sambia"
+                  },
+                  {
+                    "tag": "Sao Tome und Principe"
+                  },
+                  {
+                    "tag": "Senegal"
+                  },
+                  {
+                    "tag": "Seychellen"
+                  },
+                  {
+                    "tag": "Sierra Leone"
+                  },
+                  {
+                    "tag": "Simbabwe"
+                  },
+                  {
+                    "tag": "Somalia"
+                  },
+                  {
+                    "tag": "Südafrika"
+                  },
+                  {
+                    "tag": "Sudan"
+                  },
+                  {
+                    "tag": "Südsudan"
+                  },
+                  {
+                    "tag": "Tansania"
+                  },
+                  {
+                    "tag": "Togo"
+                  },
+                  {
+                    "tag": "Tschad"
+                  },
+                  {
+                    "tag": "Tunesien"
+                  },
+                  {
+                    "tag": "Uganda"
+                  },
+                  {
+                    "tag": "Zentralafrikanische Republik"
+                  }
+                ]
+              },
+              {
+                "tag": "Asien",
+                "untertags": [
+                  {
+                    "tag": "Afghanistan"
+                  },
+                  {
+                    "tag": "Armenien"
+                  },
+                  {
+                    "tag": "Aserbaidschan"
+                  },
+                  {
+                    "tag": "Bahrain"
+                  },
+                  {
+                    "tag": "Bangladesch"
+                  },
+                  {
+                    "tag": "Bhutan"
+                  },
+                  {
+                    "tag": "Brunei"
+                  },
+                  {
+                    "tag": "China"
+                  },
+                  {
+                    "tag": "Georgien"
+                  },
+                  {
+                    "tag": "Indien"
+                  },
+                  {
+                    "tag": "Indonesien"
+                  },
+                  {
+                    "tag": "Irak"
+                  },
+                  {
+                    "tag": "Iran"
+                  },
+                  {
+                    "tag": "Israel"
+                  },
+                  {
+                    "tag": "Japan"
+                  },
+                  {
+                    "tag": "Jemen"
+                  },
+                  {
+                    "tag": "Jordanien"
+                  },
+                  {
+                    "tag": "Kambodscha"
+                  },
+                  {
+                    "tag": "Kasachstan"
+                  },
+                  {
+                    "tag": "Katar"
+                  },
+                  {
+                    "tag": "Kirgisistan"
+                  },
+                  {
+                    "tag": "Südkorea"
+                  },
+                  {
+                    "tag": "Kuwait"
+                  },
+                  {
+                    "tag": "Laos"
+                  },
+                  {
+                    "tag": "Libanon"
+                  },
+                  {
+                    "tag": "Malaysia"
+                  },
+                  {
+                    "tag": "Malediven"
+                  },
+                  {
+                    "tag": "Mongolei"
+                  },
+                  {
+                    "tag": "Myanmar (Burma)"
+                  },
+                  {
+                    "tag": "Nepal"
+                  },
+                  {
+                    "tag": "Nordkorea"
+                  },
+                  {
+                    "tag": "Oman"
+                  },
+                  {
+                    "tag": "Pakistan"
+                  },
+                  {
+                    "tag": "Philippinen"
+                  },
+                  {
+                    "tag": "Russland"
+                  },
+                  {
+                    "tag": "Saudi Arabien"
+                  },
+                  {
+                    "tag": "Singapur"
+                  },
+                  {
+                    "tag": "Sri Lanka"
+                  },
+                  {
+                    "tag": "Syrien"
+                  },
+                  {
+                    "tag": "Tadschikistan"
+                  },
+                  {
+                    "tag": "Thailand"
+                  },
+                  {
+                    "tag": "Timor-Leste"
+                  },
+                  {
+                    "tag": "Türkei"
+                  },
+                  {
+                    "tag": "Turkmenistan"
+                  },
+                  {
+                    "tag": "Usbekistan"
+                  },
+                  {
+                    "tag": "Vereinigte Arabische Emirate"
+                  },
+                  {
+                    "tag": "Vietnam"
+                  },
+                  {
+                    "tag": "Zypern"
+                  }
+                ]
+              },
+              {
+                "tag": "Australien und Ozeanien",
+                "untertags": [
+                  {
+                    "tag": "Australien"
+                  },
+                  {
+                    "tag": "Fidschi"
+                  },
+                  {
+                    "tag": "Kiribati"
+                  },
+                  {
+                    "tag": "Marshallinseln"
+                  },
+                  {
+                    "tag": "Mikronesien"
+                  },
+                  {
+                    "tag": "Nauru"
+                  },
+                  {
+                    "tag": "Neuseeland"
+                  },
+                  {
+                    "tag": "Palau"
+                  },
+                  {
+                    "tag": "Papua Neuguinea"
+                  },
+                  {
+                    "tag": "Salomonen"
+                  },
+                  {
+                    "tag": "Samoa"
+                  },
+                  {
+                    "tag": "Tonga"
+                  },
+                  {
+                    "tag": "Tuvalu"
+                  },
+                  {
+                    "tag": "Vanuatu"
+                  }
+                ]
+              },
+              {
+                "tag": "Europa",
+                "untertags": [
+                  {
+                    "tag": "Albanien"
+                  },
+                  {
+                    "tag": "Andorra"
+                  },
+                  {
+                    "tag": "Belarus (Weißrussland)"
+                  },
+                  {
+                    "tag": "Belgien"
+                  },
+                  {
+                    "tag": "Bosnien und Herzegowina"
+                  },
+                  {
+                    "tag": "Bulgarien"
+                  },
+                  {
+                    "tag": "Dänemark"
+                  },
+                  {
+                    "tag": "Deutschland"
+                  },
+                  {
+                    "tag": "Estland"
+                  },
+                  {
+                    "tag": "Finnland"
+                  },
+                  {
+                    "tag": "Frankreich"
+                  },
+                  {
+                    "tag": "Griechenland"
+                  },
+                  {
+                    "tag": "Irland"
+                  },
+                  {
+                    "tag": "Island"
+                  },
+                  {
+                    "tag": "Italien"
+                  },
+                  {
+                    "tag": "Kroatien"
+                  },
+                  {
+                    "tag": "Lettland"
+                  },
+                  {
+                    "tag": "Liechtenstein"
+                  },
+                  {
+                    "tag": "Litauen"
+                  },
+                  {
+                    "tag": "Luxemburg"
+                  },
+                  {
+                    "tag": "Malta"
+                  },
+                  {
+                    "tag": "Moldau"
+                  },
+                  {
+                    "tag": "Monaco"
+                  },
+                  {
+                    "tag": "Montenegro"
+                  },
+                  {
+                    "tag": "Niederlande"
+                  },
+                  {
+                    "tag": "Nordmazedonien"
+                  },
+                  {
+                    "tag": "Norwegen"
+                  },
+                  {
+                    "tag": "Österreich"
+                  },
+                  {
+                    "tag": "Polen"
+                  },
+                  {
+                    "tag": "Portugal"
+                  },
+                  {
+                    "tag": "Rumänien"
+                  },
+                  {
+                    "tag": "San Marino"
+                  },
+                  {
+                    "tag": "Schweden"
+                  },
+                  {
+                    "tag": "Schweiz"
+                  },
+                  {
+                    "tag": "Serbien"
+                  },
+                  {
+                    "tag": "Slowakei"
+                  },
+                  {
+                    "tag": "Slowenien"
+                  },
+                  {
+                    "tag": "Spanien"
+                  },
+                  {
+                    "tag": "Tschechien"
+                  },
+                  {
+                    "tag": "Ukraine"
+                  },
+                  {
+                    "tag": "Ungarn"
+                  },
+                  {
+                    "tag": "Vereinigtes Königreich"
+                  },
+                  {
+                    "tag": "Vatikanstadt (Heiliger Stuhl)"
+                  }
+                ]
+              },
+              {
+                "tag": "Nordamerika",
+                "untertags": [
+                  {
+                    "tag": "Antigua und Barbuda"
+                  },
+                  {
+                    "tag": "Bahamas"
+                  },
+                  {
+                    "tag": "Barbados"
+                  },
+                  {
+                    "tag": "Belize"
+                  },
+                  {
+                    "tag": "Costa Rica"
+                  },
+                  {
+                    "tag": "Dominica"
+                  },
+                  {
+                    "tag": "Dominikanische Republik"
+                  },
+                  {
+                    "tag": "El Salvador"
+                  },
+                  {
+                    "tag": "Grenada"
+                  },
+                  {
+                    "tag": "Guatemala"
+                  },
+                  {
+                    "tag": "Haiti"
+                  },
+                  {
+                    "tag": "Honduras"
+                  },
+                  {
+                    "tag": "Jamaika"
+                  },
+                  {
+                    "tag": "Kanada"
+                  },
+                  {
+                    "tag": "Kuba"
+                  },
+                  {
+                    "tag": "Mexiko"
+                  },
+                  {
+                    "tag": "Nicaragua"
+                  },
+                  {
+                    "tag": "Panama"
+                  },
+                  {
+                    "tag": "St. Kitts und Nevis"
+                  },
+                  {
+                    "tag": "St. Lucia"
+                  },
+                  {
+                    "tag": "St. Vincent und die Grenadinen"
+                  },
+                  {
+                    "tag": "USA"
+                  }
+                ]
+              },
+              {
+                "tag": "Südamerika",
+                "untertags": [
+                  {
+                    "tag": "Argentinien"
+                  },
+                  {
+                    "tag": "Bolivien"
+                  },
+                  {
+                    "tag": "Brasilien"
+                  },
+                  {
+                    "tag": "Chile"
+                  },
+                  {
+                    "tag": "Ecuador"
+                  },
+                  {
+                    "tag": "Guyana"
+                  },
+                  {
+                    "tag": "Kolumbien"
+                  },
+                  {
+                    "tag": "Paraguay"
+                  },
+                  {
+                    "tag": "Peru"
+                  },
+                  {
+                    "tag": "Suriname"
+                  },
+                  {
+                    "tag": "Trinidad und Tobago"
+                  },
+                  {
+                    "tag": "Uruguay"
+                  },
+                  {
+                    "tag": "Venezuela"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "tag": "Übersee- & Extraterritoriale Gebiete",
+            "untertags": [
+              {
+                "tag": "Amerikanisch-Samoa (USA)"
+              },
+              {
+                "tag": "Anguilla (GBR)"
+              },
+              {
+                "tag": "Aruba (NLD)"
+              },
+              {
+                "tag": "Ashmore- und Cartier-Inseln (AUS)"
+              },
+              {
+                "tag": "Baker- und Howlandinseln (USA)"
+              },
+              {
+                "tag": "Bermudas (GBR)"
+              },
+              {
+                "tag": "Bouvetinsel (NOR)"
+              },
+              {
+                "tag": "Britische Jungferninseln (GBR)"
+              },
+              {
+                "tag": "Britisches Territorium im Indischen Ozean (GBR)"
+              },
+              {
+                "tag": "Falklandinseln (GBR)"
+              },
+              {
+                "tag": "Färöer (DNK)"
+              },
+              {
+                "tag": "Französisch-Guayana (FRA)"
+              },
+              {
+                "tag": "Französisch-Polynesien (FRA)"
+              },
+              {
+                "tag": "Gibraltar (GBR)"
+              },
+              {
+                "tag": "Grönland (DNK)"
+              },
+              {
+                "tag": "Guadeloupe (FRA)"
+              },
+              {
+                "tag": "Guam (USA)"
+              },
+              {
+                "tag": "Guernsey (GBR)"
+              },
+              {
+                "tag": "Heard & McDonaldinseln (AUS)"
+              },
+              {
+                "tag": "Hongkong (CHN)"
+              },
+              {
+                "tag": "Isle of Man (GBR)"
+              },
+              {
+                "tag": "Jan Mayen (NOR)"
+              },
+              {
+                "tag": "Jarvis-Insel (USA)"
+              },
+              {
+                "tag": "Jersey (GBR)"
+              },
+              {
+                "tag": "Johnston-Atoll (USA)"
+              },
+              {
+                "tag": "Jungferninseln (USA)"
+              },
+              {
+                "tag": "Kaimaninseln (GBR)"
+              },
+              {
+                "tag": "Kaliningrad (RUS)"
+              },
+              {
+                "tag": "Kingman-Riff (USA)"
+              },
+              {
+                "tag": "Kokosinseln (AUS)"
+              },
+              {
+                "tag": "Korallenmeerinseln (AUS)"
+              },
+              {
+                "tag": "Macau (CHN)"
+              },
+              {
+                "tag": "Martinique (FRA)"
+              },
+              {
+                "tag": "Mayotte (FRA)"
+              },
+              {
+                "tag": "Midway-Inseln (USA)"
+              },
+              {
+                "tag": "Monteserrat (GBR)"
+              },
+              {
+                "tag": "Navassa-Insel (USA)"
+              },
+              {
+                "tag": "Neukaledonien (FRA)"
+              },
+              {
+                "tag": "Niederländische Antillen (NLD)"
+              },
+              {
+                "tag": "Nördliche Marianen (USA)"
+              },
+              {
+                "tag": "Norfolkinsel (AUS)"
+              },
+              {
+                "tag": "Palmyra-Atoll (USA)"
+              },
+              {
+                "tag": "Pitcairninseln (GBR)"
+              },
+              {
+                "tag": "Puerto Rico (USA)"
+              },
+              {
+                "tag": "Réunion (FRA)"
+              },
+              {
+                "tag": "Spitzbergen (NOR)"
+              },
+              {
+                "tag": "St. Helena, Ascension und Tristan da Cunha (GBR)"
+              },
+              {
+                "tag": "St. Pierre & Miquelon (FRA)"
+              },
+              {
+                "tag": "Südgeorgien & Südliche Sandwichinseln (GBR)"
+              },
+              {
+                "tag": "Tokelau (NZL)"
+              },
+              {
+                "tag": "Turks- und Caicosinseln (GBR)"
+              },
+              {
+                "tag": "Wake Island (USA)"
+              },
+              {
+                "tag": "Wallis & Futuna (FRA)"
+              },
+              {
+                "tag": "Weihnachtsinsel (AUS)"
+              }
+            ]
+          },
+          {
+            "tag": "Welt- und Randmeere",
+            "untertags": [
+              {
+                "tag": "Baltisches Meer (Ostsee)"
+              },
+              {
+                "tag": "Indischer Ozean"
+              },
+              {
+                "tag": "Karibisches Meer"
+              },
+              {
+                "tag": "Kaspisches Meer"
+              },
+              {
+                "tag": "Mittelmeer"
+              },
+              {
+                "tag": "Nordatlantik"
+              },
+              {
+                "tag": "Ostchinesisches Meer"
+              },
+              {
+                "tag": "Ostpazifik"
+              },
+              {
+                "tag": "Persischer Golf"
+              },
+              {
+                "tag": "Rotes Meer"
+              },
+              {
+                "tag": "Schwarzes Meer"
+              },
+              {
+                "tag": "Südatlantik"
+              },
+              {
+                "tag": "Südchinesisches Meer"
+              },
+              {
+                "tag": "Westpazifik"
+              }
+            ]
+          },
+          {
+            "tag": "Luftraum"
+          },
+          {
+            "tag": "Hoheitsgewässer"
+          }
+        ]
+      },
+      {
+        "tag": "Quellentyp",
+        "untertags": [
+          {
+            "tag": "Behördenseite"
+          },
+          {
+            "tag": "Blog"
+          },
+          {
+            "tag": "Nachrichtenseite"
+          },
+          {
+            "tag": "Unternehmens- oder Vereinsseite"
+          },
+          {
+            "tag": "wissenschaftliche Fachzeitschrift"
+          },
+          {
+            "tag": "Konferenz",
+            "untertags": [
+              {
+                "tag": "34C3 Konferenz"
+              },
+              {
+                "tag": "Blackhat Europa"
+              },
+              {
+                "tag": "Blackhat USA"
+              },
+              {
+                "tag": "Chaos Computer Club"
+              },
+              {
+                "tag": "CyCon (International Conference on Cyber Conflict)"
+              },
+              {
+                "tag": "DLD"
+              },
+              {
+                "tag": "Infrachain"
+              },
+              {
+                "tag": "International Conference on Cyber Conflict"
+              },
+              {
+                "tag": "International Conference on Knowledge Technologies and Data-Driven Business"
+              },
+              {
+                "tag": "Kommune 5.0: Wenn Algorithmen reagieren und verwalten"
+              },
+              {
+                "tag": "Msc"
+              },
+              {
+                "tag": "MSI"
+              },
+              {
+                "tag": "No-Spy Konferenz"
+              },
+              {
+                "tag": "Re:publica"
+              },
+              {
+                "tag": "Semantics"
+              },
+              {
+                "tag": "Stuttgarter Wissensmanagement"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "tag": "Social Media Post",
+        "untertags": [
+          {
+            "tag": "Post-Twitter"
+          },
+          {
+            "tag": "Post-Facebook"
+          },
+          {
+            "tag": "Post-Telegram"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "tag": "Auftragstags",
+    "untertags": [
+      {
+        "tag": "WB-Cyber",
+        "untertags": [
+          {
+            "tag": "[WB-C]1 Cyber International"
+          },
+          {
+            "tag": "[WB-C]2 Cyber Österreich"
+          },
+          {
+            "tag": "[WB-C]3 Cyberinnovationen International"
+          },
+          {
+            "tag": "[WB-C]4 Cyberinnovationen Österreich"
+          }
+        ]
+      },
+      {
+        "tag": "WB-KriMiSi"
+      },
+      {
+        "tag": "WB-InnoTech"
+      },
+      {
+        "tag": "HET-EU Verteidigungspolitik"
+      },
+      {
+        "tag": "HSC",
+        "untertags": [
+          {
+            "tag": "HSC-Ö",
+            "untertags": [
+              {
+                "tag": "China-Ö"
+              },
+              {
+                "tag": "Katar-Ö"
+              },
+              {
+                "tag": "Kuwait-Ö"
+              },
+              {
+                "tag": "Oman-Ö"
+              },
+              {
+                "tag": "Russland-Ö"
+              },
+              {
+                "tag": "Saudi-Arabien-Ö"
+              },
+              {
+                "tag": "Türkei-Ö"
+              },
+              {
+                "tag": "USA-Ö"
+              },
+              {
+                "tag": "VAE-Ö"
+              }
+            ]
+          },
+          {
+            "tag": "HSC-KI",
+            "untertags": [
+              {
+                "tag": "[KI_]Grundlagendokument"
+              },
+              {
+                "tag": "[KI_]Tools und Usecases"
+              },
+              {
+                "tag": "[KI_]Ausbildung"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]
