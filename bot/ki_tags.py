@@ -63,7 +63,10 @@ PFLICHT_AESTE = (
 KI_AST = ("Auftragstags", "HSC", "HSC-KI")
 KI_ERSATZ = "[KI_]Tools und Usecases"
 MAX_TOKENS = 16000         # Denken + Antwort; 20 Artikel brauchen meist nur einen Bruchteil davon
-DEEPSEEK_MAX_TOKENS = 8000  # sicher unter DeepSeeks Obergrenze
+DEEPSEEK_MAX_TOKENS = 8000  # reicht ohne Denkmodus für 5 Artikel mit je 25 Tags samt Beleg
+DEEPSEEK_MAX_TOKENS_DENKEN = 32000  # mit Denkmodus ([llm] denken = true) braucht das Nachdenken selbst viel Platz
+KNAPP = ("\n\nWICHTIG – deine letzte Antwort war zu lang und wurde abgeschnitten: Antworte diesmal knapp, "
+         "höchstens 15 Tags, jeder Beleg höchstens fünf Wörter.")
 STANDARD_THEMA = ("Cyber und Technologie – IT-Sicherheit, Cyberangriffe und Cyberkriminalität, Datenschutz und "
                   "Überwachung, Künstliche Intelligenz, Software, Hardware und Halbleiter, Internet und Plattformen, "
                   "Telekommunikation, digitale und kritische Infrastruktur, Raumfahrt- und Zukunftstechnologien, "
@@ -246,6 +249,7 @@ class Antwort(NamedTuple):
     neu: int       # Eingabe-Tokens ohne Cache
     cache: int     # Eingabe-Tokens aus dem Cache
     ausgabe: int
+    denken: int = 0  # davon Denk-Tokens (falls der Anbieter sie meldet)
 
 
 def einstellungen(cfg: dict) -> dict:
@@ -271,6 +275,7 @@ def einstellungen(cfg: dict) -> dict:
     llm["effort"] = effort if effort in EFFORTS else "low"
     thema = llm.get("thema")
     llm["thema"] = " ".join(thema.split())[:500] if isinstance(thema, str) else STANDARD_THEMA
+    llm["denken"] = llm.get("denken") is True  # DeepSeek-Denkmodus: gründlicher, aber viel mehr Tokens und Zeit
     return llm
 
 
@@ -351,6 +356,24 @@ def system_prompt(tags: dict[str, str], thema: str) -> str:
                             pflicht=pflicht, tag_liste=tag_liste(blaetter))
 
 
+def prompt_vorschau(llm: dict, tags: dict[str, str]) -> str:
+    """Genau das, was an die KI geht – zum Kontrollieren (python news_bot.py --prompt)."""
+    beispiel = [{"titel": "Hacker legen Kliniken in Wien lahm", "teaser": "Ransomware verschlüsselt Patientendaten.",
+                 "medium": "Beispiel-Zeitung"}]
+    system = system_prompt(tags, llm["thema"]) + ("" if llm["anbieter"] == "anthropic" else JSON_FORM)
+    teile = [
+        f"Anbieter: {NAMEN[llm['anbieter']]} · Modell: {llm['modell']}"
+        + (f" · Denkmodus: {'an' if llm['denken'] else 'aus'}" if llm["anbieter"] == "deepseek" else f" · effort: {llm['effort']}"),
+        f"Tag-Liste: {len(unterste_tags(tags))} unterste von {len(tags)} Tags · Pakete zu {STAPEL} Artikeln",
+        "", "═" * 30 + " SYSTEM-PROMPT (bleibt immer gleich, wird zwischengespeichert) " + "═" * 30, "", system,
+        "", "═" * 30 + " NACHRICHT PRO PAKET (Beispiel mit 1 Artikel) " + "═" * 30, "", artikel_nachricht(beispiel),
+    ]
+    if llm["anbieter"] == "anthropic":
+        teile += ["", "═" * 30 + " ANTWORTFORM (JSON-Schema, von Claude erzwungen) " + "═" * 30, "",
+                  json.dumps(ANTWORT_SCHEMA, ensure_ascii=False, indent=2)]
+    return "\n".join(teile) + "\n"
+
+
 def artikel_nachricht(stapel: list[dict]) -> str:
     daten = [{"id": str(i), "medium": a["medium"][:200], "titel": a["titel"][:300],
               "vorschau": (a.get("teaser") or "")[:1200]} for i, a in enumerate(stapel)]
@@ -368,6 +391,8 @@ class TagVergabe:
         if not llm["api_key"]:
             raise KiFehler("Kein API-Schlüssel – in config.toml unter [llm] bei api_key eintragen.")
         self.schluessel = llm["api_key"]
+        self.denken = llm["denken"]
+        self.thinking_parameter = True  # fällt weg, falls DeepSeek ihn nicht kennt
         self.modell = llm["modell"]
         self.effort = llm["effort"]
         blaetter = unterste_tags(tags)
@@ -394,15 +419,22 @@ class TagVergabe:
         for start in range(0, len(artikel), STAPEL):
             self._stapel(artikel[start:start + STAPEL])
 
-    def _stapel(self, stapel: list[dict]) -> None:
-        antwort = self._frage_claude(stapel) if self.anbieter == "anthropic" else self._frage_deepseek(stapel)
+    def _stapel(self, stapel: list[dict], knapp: bool = False) -> None:
+        antwort = self._frage_claude(stapel, knapp) if self.anbieter == "anthropic" else self._frage_deepseek(stapel, knapp)
         if antwort.stopp != "ok":
+            grund = {"refusal": "abgelehnt", "max_tokens": "Antwort zu lang"}.get(antwort.stopp, "leere Antwort")
             if len(stapel) > 1:  # Paket teilen – so trifft es höchstens den einen Artikel, der das auslöst
+                log.info("KI-Tags: %s bei %d Artikeln (%d Ausgabe-Tokens%s) – Paket wird geteilt.", grund, len(stapel),
+                         antwort.ausgabe, f", davon {antwort.denken} Denken" if antwort.denken else "")
                 mitte = len(stapel) // 2
                 self._stapel(stapel[:mitte])
                 self._stapel(stapel[mitte:])
                 return
-            grund = {"refusal": "abgelehnt", "max_tokens": "Antwort zu lang"}.get(antwort.stopp, "leere Antwort")
+            if antwort.stopp == "max_tokens" and not knapp:  # einmal knapp nachfragen statt aufgeben
+                log.info("KI-Tags: Antwort zu lang (%d Ausgabe-Tokens%s) – frage knapp nach.", antwort.ausgabe,
+                         f", davon {antwort.denken} Denken" if antwort.denken else "")
+                self._stapel(stapel, knapp=True)
+                return
             log.warning("KI-Tags für „%s“ nicht möglich (%s).", stapel[0]["titel"][:80], grund)
             return
         try:
@@ -434,9 +466,10 @@ class TagVergabe:
         zu_wenig = [a for a in stapel if a.get("relevant") and not a["tags_offen"] and len(a["tags"]) < MIN_TAGS_PRO_ARTIKEL]
         if zu_wenig:
             log.info("KI-Tags: %d Artikel mit weniger als %d Tags.", len(zu_wenig), MIN_TAGS_PRO_ARTIKEL)
-        log.info("KI-Tags (%s): %d Artikel, %d zum Thema, Tokens: %d neu, %d aus dem Cache, %d Ausgabe.",
+        log.info("KI-Tags (%s): %d Artikel, %d zum Thema, Tokens: %d neu, %d aus dem Cache, %d Ausgabe%s.",
                  self.modell, len(stapel), sum(a.get("relevant", True) for a in stapel),
-                 antwort.neu, antwort.cache, antwort.ausgabe)
+                 antwort.neu, antwort.cache, antwort.ausgabe,
+                 f" (davon {antwort.denken} Denken)" if antwort.denken else "")
 
     def _ergaenze(self, belege: dict[str, str]) -> dict[str, str]:
         """Pflicht-Tags absichern: [S]1 Cyber immer, je Pflicht-Ast ein Ersatz-Tag, falls die KI keinen
@@ -460,14 +493,14 @@ class TagVergabe:
 
     # ------------------------------------------------------------------ Claude (Anthropic-SDK)
 
-    def _frage_claude(self, stapel: list[dict]) -> Antwort:
+    def _frage_claude(self, stapel: list[dict], knapp: bool = False) -> Antwort:
         a = self.anthropic
         try:
             r = self.client.messages.create(
                 model=self.modell,
                 max_tokens=MAX_TOKENS,
                 system=self.system,
-                messages=[{"role": "user", "content": artikel_nachricht(stapel)}],
+                messages=[{"role": "user", "content": artikel_nachricht(stapel) + (KNAPP if knapp else "")}],
                 output_config={"effort": self.effort,
                                "format": {"type": "json_schema", "schema": ANTWORT_SCHEMA}},
             )
@@ -493,32 +526,27 @@ class TagVergabe:
 
     # ------------------------------------------------------------------ DeepSeek (OpenAI-kompatible Schnittstelle)
 
-    def _frage_deepseek(self, stapel: list[dict]) -> Antwort:
+    def _frage_deepseek(self, stapel: list[dict], knapp: bool = False) -> Antwort:
         anfrage = {
             "model": self.modell,
             "messages": [{"role": "system", "content": self.system},
-                         {"role": "user", "content": artikel_nachricht(stapel)}],
+                         {"role": "user", "content": artikel_nachricht(stapel) + (KNAPP if knapp else "")}],
             "response_format": {"type": "json_object"},
-            "max_tokens": DEEPSEEK_MAX_TOKENS,
+            "max_tokens": DEEPSEEK_MAX_TOKENS_DENKEN if self.denken else DEEPSEEK_MAX_TOKENS,
             "stream": False,
         }
-        for versuch in range(4):  # Überlastung und Verbindungsfehler: kurz warten, bis zu 3-mal neu versuchen
-            if versuch:
-                time.sleep(2 ** versuch)
-            try:
-                r = requests.post(DEEPSEEK_URL, json=anfrage, timeout=180,
-                                  headers={"Authorization": f"Bearer {self.schluessel}"})
-            except requests.RequestException:
-                continue
-            if r.status_code in (429, 500, 502, 503, 504):
-                continue
-            break
-        else:
-            raise KiFehler("DeepSeek nicht erreichbar oder überlastet – nächste Prüfung versucht es wieder")
-        try:
-            daten = r.json()
-        except ValueError:
-            daten = None
+        if self.thinking_parameter:
+            # Ohne das denkt deepseek-v4-flash vor jeder Antwort ausführlich nach – das kostete tausende Tokens pro
+            # Artikel und sprengte das Limit („Antwort zu lang“). Für Tags reicht der ausführliche Prompt.
+            anfrage["thinking"] = {"type": "enabled" if self.denken else "disabled"}
+        r = self._sende_deepseek(anfrage)
+        if r.status_code in (400, 422) and "thinking" in anfrage:
+            # Kennt das Modell den Parameter nicht, einmal ohne ihn versuchen und ihn ab dann weglassen
+            log.info("DeepSeek lehnt den Parameter „thinking“ ab (%s) – frage ohne ihn.", _meldung(_json(r), r.text)[:120])
+            self.thinking_parameter = False
+            del anfrage["thinking"]
+            r = self._sende_deepseek(anfrage)
+        daten = _json(r)
         if r.status_code == 401:
             raise KiFehler("API-Schlüssel ungültig – in config.toml unter [llm] api_key prüfen")
         if r.status_code == 402:
@@ -534,7 +562,32 @@ class TagVergabe:
         stopp = {"length": "max_tokens", "content_filter": "refusal"}.get(grund, "ok" if text.strip() else "leer")
         u = daten.get("usage") if isinstance(daten.get("usage"), dict) else {}
         cache = int(u.get("prompt_cache_hit_tokens") or 0)
-        return Antwort(stopp, text, int(u.get("prompt_tokens") or 0) - cache, cache, int(u.get("completion_tokens") or 0))
+        details = u.get("completion_tokens_details") if isinstance(u.get("completion_tokens_details"), dict) else {}
+        return Antwort(stopp, text, int(u.get("prompt_tokens") or 0) - cache, cache, int(u.get("completion_tokens") or 0),
+                       int(details.get("reasoning_tokens") or 0))
+
+    def _sende_deepseek(self, anfrage: dict) -> requests.Response:
+        for versuch in range(4):  # Überlastung und Verbindungsfehler: kurz warten, bis zu 3-mal neu versuchen
+            if versuch:
+                time.sleep(2 ** versuch)
+            try:
+                r = requests.post(DEEPSEEK_URL, json=anfrage, timeout=180,
+                                  headers={"Authorization": f"Bearer {self.schluessel}"})
+            except requests.RequestException:
+                continue
+            if r.status_code in (429, 500, 502, 503, 504):
+                continue
+            break
+        else:
+            raise KiFehler("DeepSeek nicht erreichbar oder überlastet – nächste Prüfung versucht es wieder")
+        return r
+
+
+def _json(r: requests.Response) -> object:
+    try:
+        return r.json()
+    except ValueError:
+        return None
 
 
 def _meldung(body: object, ersatz: object) -> str:

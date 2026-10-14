@@ -9,6 +9,7 @@ bot/vapid_privat.pem
 bot/quellen.csv
 bot/tags.csv
 bot/tags-schlagwoerter-alt.csv
+bot/prompt-vorschau.txt
 bot/quellen.xlsx
 .venv/
 __pycache__/

@@ -314,6 +314,12 @@ Statt in `config.toml` darf der Schlüssel auch in der Umgebungsvariable `DEEPSE
   Tipp: Wo es eine eigene Rubrik gibt, trag besser die ein (z. B.
   `https://www.theguardian.com/uk/technology` statt `https://www.theguardian.com/`) – weniger
   Artikel, weniger Kosten.
+- **Prompt ansehen:** `python news_bot.py --prompt` schreibt genau das, was an die KI geht – mit deiner
+  aktuellen Tag-Liste – in `bot/prompt-vorschau.txt` (ansehen z. B. mit `less prompt-vorschau.txt`).
+- **Denkmodus (DeepSeek):** ist aus – für Tags reicht der ausführliche Prompt, und Nachdenken kostete
+  tausende Tokens pro Artikel („Antwort zu lang“). Mit `denken = true` unter `[llm]` wieder einschalten
+  (gründlicher, aber deutlich teurer und langsamer). Wird eine Antwort trotzdem zu lang, teilt der Bot
+  das Paket und fragt bei einem einzelnen Artikel einmal knapp nach.
 - **Kosten:** Die Artikel gehen in Paketen zu 5 hinaus. Die Tag-Liste wird zwischengespeichert
   und kostet bei weiteren Anfragen nur einen Bruchteil. Was du tatsächlich verbrauchst, steht in
   `newsbot.log` („KI-Tags: … Tokens“) und auf der Seite des Anbieters.

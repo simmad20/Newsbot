@@ -10,6 +10,7 @@ Aufruf:
     python news_bot.py            # läuft dauerhaft (empfohlen, mit Dashboard)
     python news_bot.py --einmal   # genau ein Durchlauf (z. B. für die Aufgabenplanung)
     python news_bot.py --test     # ein Durchlauf, nur Ausgabe in der Konsole, nichts senden/speichern
+    python news_bot.py --prompt   # den kompletten Prompt an die KI in prompt-vorschau.txt schreiben
     python news_bot.py --zuruecksetzen  # nicht angeschaute Artikel vergessen (Abgehakte, Quellen, Tags, Geräte bleiben)
 """
 from __future__ import annotations
@@ -1243,6 +1244,8 @@ def main() -> None:
     gruppe = parser.add_mutually_exclusive_group()
     gruppe.add_argument("--einmal", action="store_true", help="genau ein Durchlauf")
     gruppe.add_argument("--test", action="store_true", help="ein Durchlauf, nichts senden oder speichern")
+    gruppe.add_argument("--prompt", action="store_true",
+                        help="den kompletten Prompt an die KI in prompt-vorschau.txt schreiben (zum Kontrollieren)")
     gruppe.add_argument("--zuruecksetzen", action="store_true",
                         help="nicht angeschaute Artikel und Fehler vergessen – abgehakte Artikel, Quellen, Tags, Geräte "
                              "und Einstellungen bleiben")
@@ -1257,6 +1260,12 @@ def main() -> None:
     log.info("Tags vergibt %s.", f"{ki_tags.NAMEN[llm['anbieter']]} ({llm['modell']})" if llm["api_key"]
              else "niemand – kein API-Schlüssel in config.toml unter [llm] (Artikel kommen ohne Tags)")
 
+    if args.prompt:
+        tags, _ = listen.lade_tags(TAGS_DATEI)
+        ziel = BASIS / "prompt-vorschau.txt"
+        ziel.write_text(ki_tags.prompt_vorschau(llm, tags), encoding="utf-8")
+        log.info("Prompt geschrieben: %s (ansehen z. B. mit: less %s)", ziel, ziel.name)
+        return
     if args.test:
         durchlauf(cfg, copy.deepcopy(lade_state()), test=True)
         return
