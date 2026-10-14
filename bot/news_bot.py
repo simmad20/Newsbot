@@ -83,6 +83,36 @@ STANDARD_EINSTELLUNGEN = {
     "nur_mit_tags": False, "max_meldungen_pro_lauf": 25,
     "offene_artikel_tage": 7,  # nicht abgehakte Artikel nach so vielen Tagen löschen (0 = nie)
 }
+# Namen in config.toml sind englisch; die früheren deutschen Namen funktionieren weiter (englisch gewinnt).
+# Links: Name in config.toml, rechts: Name hier im Programm.
+CONFIG_NAMEN = {
+    "timezone": "zeitzone", "interval_minutes": "intervall_minuten", "max_age_hours": "max_alter_stunden",
+    "only_with_tags": "nur_mit_tags", "max_notifications_per_run": "max_meldungen_pro_lauf",
+    "unchecked_article_days": "offene_artikel_tage", "discord_webhook_errors": "discord_webhook_fehler",
+}
+DASHBOARD_NAMEN = {"sync_seconds": "sync_sekunden"}
+ANZEIGE_NAMEN = {intern: englisch for englisch, intern in (CONFIG_NAMEN | DASHBOARD_NAMEN).items()}
+
+
+def config_name(intern: str) -> str:
+    """Wie die Einstellung in config.toml heißt – für Meldungen."""
+    return ANZEIGE_NAMEN.get(intern, intern)
+
+
+def englische_namen(roh: dict) -> dict:
+    """Englische Namen aus config.toml auf die Namen im Programm abbilden (ohne die Datei zu ändern)."""
+    cfg = dict(roh)
+    for englisch, intern in CONFIG_NAMEN.items():
+        if englisch in cfg:
+            cfg[intern] = cfg.pop(englisch)
+    if isinstance(cfg.get("dashboard"), dict):
+        cfg["dashboard"] = dict(cfg["dashboard"])
+        for englisch, intern in DASHBOARD_NAMEN.items():
+            if englisch in cfg["dashboard"]:
+                cfg["dashboard"][intern] = cfg["dashboard"].pop(englisch)
+    return cfg
+
+
 # Diese Einstellungen übernimmt der Bot ohne Neustart, sobald config.toml gespeichert wird.
 # Werte: (kleinster, größter) erlaubter Wert, None = ja/nein.
 LIVE_EINSTELLUNGEN = {"intervall_minuten": (5, 240), "max_alter_stunden": (1, MAX_ALTER_GRENZE), "nur_mit_tags": None}
@@ -106,17 +136,17 @@ def lade_config() -> dict:
     if not CONFIG_DATEI.exists():
         sys.exit(f"Konfigurationsdatei fehlt: {CONFIG_DATEI}")
     with CONFIG_DATEI.open("rb") as f:
-        cfg = tomllib.load(f)
+        cfg = englische_namen(tomllib.load(f))
     for k, v in STANDARD_EINSTELLUNGEN.items():
         cfg.setdefault(k, v)
     for name in LIVE_EINSTELLUNGEN:
         wert = pruefe_einstellung(name, cfg[name])
         if wert is None:
-            sys.exit(f"{name} in config.toml hat einen ungültigen Wert.")
+            sys.exit(f"{config_name(name)} in config.toml hat einen ungültigen Wert.")
         cfg[name] = wert
     tage = cfg["offene_artikel_tage"]
     if isinstance(tage, bool) or not isinstance(tage, int) or not 0 <= tage <= 60:
-        sys.exit("offene_artikel_tage in config.toml muss eine ganze Zahl von 0 bis 60 sein (0 = nie löschen).")
+        sys.exit("unchecked_article_days in config.toml muss eine ganze Zahl von 0 bis 60 sein (0 = nie löschen).")
     cfg["discord_webhook"] = cfg["discord_webhook"].strip()
     cfg["discord_webhook_fehler"] = cfg["discord_webhook_fehler"].strip()
     d = cfg.setdefault("dashboard", {})
@@ -209,7 +239,7 @@ def uebernimm_config_aenderungen(cfg: dict, state: dict) -> None:
         return
     _config_zeitstempel = zeitstempel
     try:
-        neu = tomllib.loads(CONFIG_DATEI.read_text(encoding="utf-8"))
+        neu = englische_namen(tomllib.loads(CONFIG_DATEI.read_text(encoding="utf-8")))
     except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as e:
         log.warning("config.toml gerade nicht lesbar (%s) – bisherige Einstellungen bleiben.", e)
         return
@@ -217,11 +247,11 @@ def uebernimm_config_aenderungen(cfg: dict, state: dict) -> None:
     for name in LIVE_EINSTELLUNGEN:
         wert = pruefe_einstellung(name, neu.get(name, STANDARD_EINSTELLUNGEN[name]))
         if wert is None:
-            log.warning("config.toml: %s hat einen ungültigen Wert – bisheriger Wert bleibt.", name)
+            log.warning("config.toml: %s hat einen ungültigen Wert – bisheriger Wert bleibt.", config_name(name))
             continue
         cfg[name] = wert
         if name in zuletzt and zuletzt[name] != wert:
-            log.info("config.toml: %s = %s übernommen (ohne Neustart).", name, wert)
+            log.info("config.toml: %s = %s übernommen (ohne Neustart).", config_name(name), wert)
             if name in state:
                 state[name] = None  # Datei gilt jetzt statt der Einstellung von der Webseite
             if name == "intervall_minuten":

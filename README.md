@@ -151,7 +151,7 @@ Gut zu wissen:
 | Benachrichtigungen ein/aus | für das Gerät, auf dem du gerade bist |
 | Reiter „Artikel“ | nach Tagen gruppiert, je 30 auf einmal („Weitere anzeigen“); Suche, Filter nach Tag und Medium, „nur gemeldete“; **neu** = seit deinem letzten Besuch |
 | Tag anklicken | **Antippen kopiert den Tag-Namen** (z. B. `Spionage`) zum direkten Einfügen – unten erscheint kurz „Kopiert“. Am PC kopiert auch **Strg+C** den Tag unter der Maus. **Gedrückt halten** (Handy), **Rechtsklick** oder **Umschalt+Klick** (PC) zeigt, wo der Tag im Tag-Baum liegt – z. B. Newsinfo → geographische Lokationen → Kontinente und Staaten → Europa → Vereinigtes Königreich (bei mehreren Stellen alle); „Nur diese Artikel“ filtert danach. Am Handy als Blatt von unten. Unter „Details“ kopiert **Alle Tags kopieren** alle Tags des Artikels, einen pro Zeile |
-| Aufräumen | Nicht abgehakte Artikel, die älter als **7 Tage** sind, löscht der Bot automatisch – auch auf der Seite. Abgehakte bleiben. Ändern mit `offene_artikel_tage` in `config.toml` (0 = nie löschen) |
+| Aufräumen | Nicht abgehakte Artikel, die älter als **7 Tage** sind, löscht der Bot automatisch – auch auf der Seite. Abgehakte bleiben. Ändern mit `unchecked_article_days` in `config.toml` (0 = nie löschen) |
 | Abhaken | **Abhaken** an einem Artikel = angeschaut; er verschwindet aus „Nicht angeschaut“ (mit „Rückgängig“). Filter: Nicht angeschaut / Angeschaut / Alle; „Alle … als angeschaut markieren“ hakt die ganze gefilterte Liste ab. Gilt auf allen Geräten – der Bot speichert es in `state.json`; die Zahl am Reiter zählt die offenen Artikel |
 | Reiter „Quellen“ | Tabelle: eine Zeile pro Quelle, eine Spalte pro Wochentag – Tag anklicken schaltet ihn ein/aus; Suche, Quellen hinzufügen, Datei importieren |
 | Reiter „Tags“ | Karten: ein Tag pro Karte mit Beschreibung; bearbeiten (Stift) oder löschen; Suche, neuer Tag, Datei importieren (auch der ganze Tag-Baum) |
@@ -162,7 +162,7 @@ einer langen Prüfung. Beendest du ihn normal (Strg+C oder Konsolenfenster schli
 ab – die Seite zeigt sofort „Beendet“. Stürzt er ab, wird er im Task-Manager beendet oder ist der PC
 aus, zeigt die Seite nach etwa 75 Sekunden ohne Lebenszeichen „Keine Verbindung“.
 
-**Weniger Benachrichtigungen:** `nur_mit_tags = true` in der `config.toml` – dann meldet sich der
+**Weniger Benachrichtigungen:** `only_with_tags = true` in der `config.toml` – dann meldet sich der
 Bot nur bei Artikeln zu deinen Themen. Auf der Seite stehen trotzdem alle neuen Artikel.
 
 ## Im Alltag
@@ -173,7 +173,7 @@ Bot nur bei Artikeln zu deinen Themen. Auf der Seite stehen trotzdem alle neuen 
 | Tags ändern | Reiter „Tags“ auf der Seite – oder `tags.csv` bearbeiten | nein |
 | API-Schlüssel, KI-Modell | `config.toml` unter `[llm]` bearbeiten | **ja** |
 | Pausieren, Intervall, Höchstalter, sofort prüfen | Knöpfe auf der Seite | nein |
-| `intervall_minuten`, `max_alter_stunden`, `nur_mit_tags` | `config.toml` bearbeiten und speichern | nein |
+| `interval_minutes`, `max_age_hours`, `only_with_tags` | `config.toml` bearbeiten und speichern | nein |
 | Discord, Dashboard-Adresse, Zeitzone | `config.toml` bearbeiten | **ja** |
 | Neues Handy dazu | dort „Benachrichtigungen einschalten“ | nein |
 
@@ -181,7 +181,7 @@ Bot nur bei Artikeln zu deinen Themen. Auf der Seite stehen trotzdem alle neuen 
 was du zuletzt geändert hast: Speicherst du die `config.toml` mit einem neuen Wert, übernimmt der Bot
 ihn innerhalb von 30 Sekunden – auch wenn auf der Seite vorher etwas anderes eingestellt war. Stellst
 du danach auf der Seite um, gilt wieder die Seite. Erhöhst du das Höchstalter, meldet der Bot bei der
-nächsten Prüfung auch ältere, noch nicht gemeldete Artikel (höchstens `max_meldungen_pro_lauf` auf einmal).
+nächsten Prüfung auch ältere, noch nicht gemeldete Artikel (höchstens `max_notifications_per_run` auf einmal).
 
 Neustart ohne Fenster: im Task-Manager „pythonw.exe“ beenden und die Verknüpfung im
 Autostart-Ordner doppelklicken (oder PC neu starten).
@@ -289,10 +289,10 @@ Einstellungen in `config.toml`:
 ```toml
 [llm]
 api_key = "sk-..."            # Pflicht – sonst kommen die Artikel ohne Tags
-anbieter = "deepseek"         # freiwillig: "deepseek" oder "anthropic" – sonst am Schlüssel erkannt
-modell = "deepseek-v4-flash"  # freiwillig; Standard: deepseek-v4-flash bzw. claude-opus-5-5
+provider = "deepseek"         # freiwillig: "deepseek" oder "anthropic" – sonst am Schlüssel erkannt
+model = "deepseek-v4-flash"   # freiwillig; Standard: deepseek-v4-flash bzw. claude-opus-5-5
 effort = "low"                # freiwillig, nur Claude: low, medium oder high
-thema = "Cyber und Technologie"  # freiwillig – siehe Themenfilter; thema = "" schaltet ihn aus
+topic = "Cyber and technology"  # freiwillig – siehe Themenfilter; topic = "" schaltet ihn aus
 ```
 
 Statt in `config.toml` darf der Schlüssel auch in der Umgebungsvariable `DEEPSEEK_API_KEY` bzw.
@@ -311,7 +311,7 @@ Statt in `config.toml` darf der Schlüssel auch in der Umgebungsvariable `DEEPSE
   Digitalpolitik). Sport, Kultur, allgemeine Politik, Krieg, Wirtschaft usw. werden verworfen –
   außer das Thema ist darin der Kern (z. B. ein Cyberangriff im Krieg, ein KI-Gesetz). Verworfene
   Artikel erscheinen nicht auf der Seite und lösen keine Benachrichtigung aus; im Log und in der
-  Statuskarte steht nur „… nicht zum Thema“. Anderes Thema: `thema = "..."` in `config.toml`.
+  Statuskarte steht nur „… nicht zum Thema“. Anderes Thema: `topic = "..."` in `config.toml`.
   Tipp: Wo es eine eigene Rubrik gibt, trag besser die ein (z. B.
   `https://www.theguardian.com/uk/technology` statt `https://www.theguardian.com/`) – weniger
   Artikel, weniger Kosten.
@@ -324,14 +324,14 @@ Statt in `config.toml` darf der Schlüssel auch in der Umgebungsvariable `DEEPSE
 - **Prompt ansehen:** `python news_bot.py --prompt` schreibt genau das, was an die KI geht – mit deiner
   aktuellen Tag-Liste – in `bot/prompt-vorschau.txt` (ansehen z. B. mit `less prompt-vorschau.txt`).
 - **Denkmodus (DeepSeek):** ist aus – für Tags reicht der ausführliche Prompt, und Nachdenken kostete
-  tausende Tokens pro Artikel („Antwort zu lang“). Mit `denken = true` unter `[llm]` wieder einschalten
+  tausende Tokens pro Artikel („Antwort zu lang“). Mit `thinking = true` unter `[llm]` wieder einschalten
   (gründlicher, aber deutlich teurer und langsamer). Wird eine Antwort trotzdem zu lang, teilt der Bot
   das Paket und fragt bei einem einzelnen Artikel einmal knapp nach.
 - **Kosten:** Die Artikel gehen in Paketen zu 5 hinaus. Die Tag-Liste wird zwischengespeichert
   und kostet bei weiteren Anfragen nur einen Bruchteil. Was du tatsächlich verbrauchst, steht in
   `newsbot.log` („KI-Tags: … Tokens“) und auf der Seite des Anbieters.
 - **Klappt die Tag-Vergabe nicht** (Schlüssel falsch, Guthaben leer, KI nicht erreichbar), steht
-  das im Reiter „Fehler“. Die Artikel werden dann ohne Tags gemeldet – auch bei `nur_mit_tags = true`,
+  das im Reiter „Fehler“. Die Artikel werden dann ohne Tags gemeldet – auch bei `only_with_tags = true`,
   damit nichts verloren geht.
 - Die Tags gelten ab der nächsten Prüfung; bereits gemeldete Artikel behalten ihre Tags.
 

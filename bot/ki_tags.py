@@ -4,17 +4,20 @@ Zwei Anbieter stehen zur Wahl – Einstellungen in config.toml:
 
     [llm]
     api_key = "sk-..."            # DeepSeek (platform.deepseek.com) oder Claude (console.anthropic.com, sk-ant-...)
-    anbieter = "deepseek"         # optional: "deepseek" oder "anthropic" – sonst am Schlüssel erkannt
-    modell = "deepseek-v4-flash"  # optional, Standard: deepseek-v4-flash bzw. claude-opus-5-5
+    provider = "deepseek"         # optional: "deepseek" oder "anthropic" – sonst am Schlüssel erkannt
+    model = "deepseek-v4-flash"   # optional, Standard: deepseek-v4-flash bzw. claude-opus-5-5
     effort = "low"                # optional, nur Claude: low, medium, high – wie gründlich es nachdenkt
-    thema = "..."                 # optional: nur Artikel zu diesem Thema behalten (Standard: Cyber und
-                                  # Technologie); thema = "" schaltet den Filter aus
+    topic = "..."                 # optional: nur Artikel zu diesem Thema behalten (Standard: Cyber and
+                                  # technology); topic = "" schaltet den Filter aus
+    min_cyber_tags = 1            # optional: so viele Tags aus „Cyber > …“ braucht ein relevanter Artikel
+    thinking = false              # optional, nur DeepSeek: Denkmodus (Standard: aus)
 
+Die früheren deutschen Namen (anbieter, modell, thema, denken) funktionieren weiter.
 Ohne api_key liest der Bot den Schlüssel aus DEEPSEEK_API_KEY bzw. ANTHROPIC_API_KEY.
 
 Ablauf pro Prüfung: Die Tag-Liste steht im System-Prompt und wird zwischengespeichert (Claude: Prompt-
 Caching für eine Stunde, DeepSeek: automatisch) – wiederholte Anfragen kosten dafür nur einen Bruchteil.
-Die Artikel gehen in Paketen zu je 10 hinaus; die Antwort ist JSON (bei Claude per Schema erzwungen).
+Die Artikel gehen in Paketen zu je 5 hinaus; die Antwort ist JSON (bei Claude per Schema erzwungen).
 Zurück kommen nur Tags, die es in tags.csv wirklich gibt – alles andere wird verworfen.
 """
 from __future__ import annotations
@@ -274,6 +277,10 @@ def einstellungen(cfg: dict) -> dict:
     """Liest den Abschnitt [llm] aus config.toml und ergänzt Standardwerte."""
     llm = cfg.get("llm")
     llm = dict(llm) if isinstance(llm, dict) else {}
+    # Namen in config.toml sind englisch; die früheren deutschen funktionieren weiter (englisch gewinnt)
+    for englisch, intern in (("provider", "anbieter"), ("model", "modell"), ("topic", "thema"), ("thinking", "denken")):
+        if englisch in llm:
+            llm[intern] = llm.pop(englisch)
     schluessel = llm.get("api_key")
     schluessel = schluessel.strip() if isinstance(schluessel, str) else ""
     anbieter = llm.get("anbieter")
@@ -296,7 +303,7 @@ def einstellungen(cfg: dict) -> dict:
     anzahl = llm.get("min_cyber_tags")
     llm["min_cyber_tags"] = anzahl if isinstance(anzahl, int) and not isinstance(anzahl, bool) and 0 <= anzahl <= 10 \
         else STANDARD_MIN_CYBER_TAGS
-    llm["denken"] = llm.get("denken") is True  # DeepSeek-Denkmodus: gründlicher, aber viel mehr Tokens und Zeit
+    llm["denken"] = llm.get("denken") is True  # [llm] thinking – Standard false: gründlicher, aber viel mehr Tokens/Zeit
     return llm
 
 
@@ -558,7 +565,7 @@ class TagVergabe:
         except a.PermissionDeniedError as e:
             raise KiFehler(f"Kein Zugriff auf {self.modell} mit diesem API-Schlüssel") from e
         except a.NotFoundError as e:
-            raise KiFehler(f"Modell „{self.modell}“ unbekannt – in config.toml unter [llm] modell prüfen") from e
+            raise KiFehler(f"Modell „{self.modell}“ unbekannt – in config.toml unter [llm] model prüfen") from e
         except a.RateLimitError as e:
             raise KiFehler("Zu viele Anfragen an Claude (Rate-Limit) – nächste Prüfung versucht es wieder") from e
         except a.BadRequestError as e:
