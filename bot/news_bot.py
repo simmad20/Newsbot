@@ -81,6 +81,7 @@ STANDARD_EINSTELLUNGEN = {
     "discord_webhook": "", "discord_webhook_fehler": "",
     "zeitzone": "Europe/Vienna", "max_alter_stunden": 24, "intervall_minuten": 15,
     "nur_mit_tags": False, "max_meldungen_pro_lauf": 25,
+    "offene_artikel_tage": 7,  # nicht abgehakte Artikel nach so vielen Tagen löschen (0 = nie)
 }
 # Diese Einstellungen übernimmt der Bot ohne Neustart, sobald config.toml gespeichert wird.
 # Werte: (kleinster, größter) erlaubter Wert, None = ja/nein.
@@ -113,6 +114,9 @@ def lade_config() -> dict:
         if wert is None:
             sys.exit(f"{name} in config.toml hat einen ungültigen Wert.")
         cfg[name] = wert
+    tage = cfg["offene_artikel_tage"]
+    if isinstance(tage, bool) or not isinstance(tage, int) or not 0 <= tage <= 60:
+        sys.exit("offene_artikel_tage in config.toml muss eine ganze Zahl von 0 bis 60 sein (0 = nie löschen).")
     cfg["discord_webhook"] = cfg["discord_webhook"].strip()
     cfg["discord_webhook_fehler"] = cfg["discord_webhook_fehler"].strip()
     d = cfg.setdefault("dashboard", {})
@@ -133,6 +137,7 @@ def lade_state() -> dict:
     leer = {
         "gesehen": {}, "feeds": {}, "fehler_gemeldet": {}, "fehler_dashboard": {},
         "verlauf": [], "fehler_verlauf": [], "sync_artikel": [], "sync_fehler": [], "sync_erledigt": [],
+        "sync_entfernt": [],
         "pausiert": False, "intervall_minuten": None, "max_alter_stunden": None, "config_stand": {}, "sofort": False,
         "letzter_lauf": None, "naechster_lauf": None, "letztes_ergebnis": "",
         "wochentag": "", "quellen_heute": 0, "push_abos": [], "bekannt": {},
@@ -788,6 +793,36 @@ def merke_fuer_dashboard(state: dict, a: dict, gemeldet: bool) -> None:
     state["sync_artikel"] = (state["sync_artikel"] + [eintrag])[-500:]
 
 
+def raeume_auf(cfg: dict, state: dict) -> int:
+    """Nicht abgehakte Artikel, die älter als offene_artikel_tage sind, aus dem Verlauf löschen – auch auf der
+    Webseite. Abgehakte bleiben. Sie kommen nicht als neu wieder: „gesehen“ hält 14 Tage, gemeldet wird
+    höchstens 7 Tage Altes."""
+    tage = cfg["offene_artikel_tage"]
+    if not tage:
+        return 0
+    grenze = jetzt_utc() - timedelta(days=tage)
+
+    def zu_alt(e: dict) -> bool:
+        if e.get("angeschaut"):
+            return False
+        try:
+            zeit = datetime.fromisoformat(e.get("datum") or e["gefunden_um"])
+        except (KeyError, TypeError, ValueError):
+            return False  # ohne lesbares Datum lieber behalten
+        if zeit.tzinfo is None:
+            zeit = zeit.replace(tzinfo=timezone.utc)
+        return zeit < grenze
+
+    weg = [e["url"] for e in state["verlauf"] if zu_alt(e)]
+    if weg:
+        entfernt = set(weg)
+        state["verlauf"] = [e for e in state["verlauf"] if e["url"] not in entfernt]
+        state["sync_artikel"] = [e for e in state["sync_artikel"] if e["url"] not in entfernt]
+        state["sync_entfernt"] = list(dict.fromkeys(state["sync_entfernt"] + weg))[-1000:]
+        log.info("Aufgeräumt: %d nicht angeschaute Artikel älter als %d Tage gelöscht.", len(weg), tage)
+    return len(weg)
+
+
 def merke_gesehen(state: dict, a: dict) -> None:
     for s in a["schluessel"]:
         state["gesehen"][s] = jetzt_utc().isoformat()
@@ -799,6 +834,8 @@ def durchlauf(cfg: dict, state: dict, test: bool = False) -> str:
     jetzt = jetzt_utc()
     grenze_alter = timedelta(hours=max_alter(cfg, state))
 
+    if not test:
+        raeume_auf(cfg, state)
     wochentag, quellen = heutige_quellen(cfg)
     tags, _ = listen.lade_tags(TAGS_DATEI)  # jedes Mal neu lesen → Änderungen gelten ohne Neustart
     melde_ungueltige_zeilen(cfg, state, test)
@@ -1023,6 +1060,7 @@ def synchronisiere(cfg: dict, state: dict) -> list[dict]:
             "artikel": state["sync_artikel"],
             "fehler": state["sync_fehler"],
             "erledigt": state["sync_erledigt"][-100:],
+            "entfernt": state["sync_entfernt"],
             "snapshot": False,
         }
     neu_fuer_seite = nutzlast["snapshot"] or pruefsumme != _listen_gesendet
@@ -1049,7 +1087,7 @@ def synchronisiere(cfg: dict, state: dict) -> list[dict]:
         _erster_sync = False
         if nutzlast["listen"] is not None:
             _listen_gesendet = pruefsumme
-        state["sync_artikel"], state["sync_fehler"], state["sync_erledigt"] = [], [], []
+        state["sync_artikel"], state["sync_fehler"], state["sync_erledigt"], state["sync_entfernt"] = [], [], [], []
         befehle += antwort.get("befehle", [])
         geraete_geaendert = bool(antwort.get("push_aenderungen"))
         if geraete_geaendert:
@@ -1281,6 +1319,7 @@ def main() -> None:
 
     try:
         state = lade_state()
+        raeume_auf(cfg, state)  # vor dem ersten Abgleich, damit die Seite gleich aufgeräumt ist
         uebernimm_config_aenderungen(cfg, state)
         if args.einmal:
             verarbeite_befehle(cfg, state)

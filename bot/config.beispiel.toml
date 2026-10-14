@@ -30,6 +30,7 @@ intervall_minuten = 15           # 5–240
 max_alter_stunden = 48           # 1–168
 nur_mit_tags = false             
 max_meldungen_pro_lauf = 25      # Höchstens so viele Benachrichtigungen pro Prüfung – der Rest kommt bei der nächsten.
+offene_artikel_tage = 7          # nicht abgehakte Artikel nach so vielen Tagen löschen (0 = nie, höchstens 60)
 
 # ---- Webseite auf Render
 [dashboard]

@@ -221,6 +221,7 @@ class SyncIn(BaseModel):
     artikel: list[ArtikelIn] = Field(default_factory=list, max_length=600)
     fehler: list[FehlerIn] = Field(default_factory=list, max_length=300)
     erledigt: list[ErledigtIn] = Field(default_factory=list, max_length=100)
+    entfernt: list[Annotated[str, Field(max_length=2000)]] = Field(default_factory=list, max_length=1000)  # vom Bot aufgeräumt
     snapshot: bool = False
     listen: Optional[ListenIn] = None  # nur, wenn sich etwas geändert hat
 
@@ -341,6 +342,8 @@ class Speicher:
                 self.fehler.clear()
                 self.hat_snapshot = True
             self.artikel_hinzufuegen(daten.artikel)
+            for url in daten.entfernt:
+                self.artikel.pop(url, None)
             self.fehler.extend(f.model_dump() for f in daten.fehler)
             if daten.listen is not None:
                 self.listen = daten.listen.model_dump()
