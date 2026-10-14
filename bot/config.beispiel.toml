@@ -44,3 +44,4 @@ api_key = "sk-TESTWERT-hier-deinen-schluessel-eintragen"
 # modell = "deepseek-v4-flash"
 # thema = "Cyber und Technologie"
 # min_cyber_tags = 1                # so viele Tags aus „Cyber > …“ braucht ein Artikel, sonst aussortiert (0 = aus)
+# denken = false                    # true = DeepSeek denkt vor der Antwort nach: gründlicher, aber teurer und langsamer
