@@ -43,4 +43,4 @@ sync_sekunden = 30
 api_key = "sk-TESTWERT-hier-deinen-schluessel-eintragen"
 # modell = "deepseek-v4-flash"
 # thema = "Cyber und Technologie"
-# min_cyber_tags = 3                # so viele Tags aus „Cyber > …“ braucht ein Artikel, sonst aussortiert (0 = aus)
+# min_cyber_tags = 1                # so viele Tags aus „Cyber > …“ braucht ein Artikel, sonst aussortiert (0 = aus)

@@ -315,10 +315,10 @@ Statt in `config.toml` darf der Schlüssel auch in der Umgebungsvariable `DEEPSE
   Tipp: Wo es eine eigene Rubrik gibt, trag besser die ein (z. B.
   `https://www.theguardian.com/uk/technology` statt `https://www.theguardian.com/`) – weniger
   Artikel, weniger Kosten.
-- **Mindestens 3 Cyber-Tags:** Ein Artikel gilt nur als relevant, wenn sich mindestens 3 Tags aus dem
-  Ast „Cyber“ belegen lassen (z. B. Ransomware, Phishing, Datenleck – nicht „[S]1 Cyber“, „Soziale Medien“
+- **Mindestens 1 Cyber-Tag:** Ein Artikel gilt nur als relevant, wenn sich mindestens 1 Tag aus dem
+  Ast „Cyber“ belegen lässt (z. B. Ransomware, Phishing, Datenleck – nicht „[S]1 Cyber“, „Soziale Medien“
   oder „Erpressung“). Das steht im Prompt und wird vom Bot zusätzlich nachgezählt; zu wenige → aussortiert.
-  Anzahl ändern mit `min_cyber_tags = 3` unter `[llm]` (0 = aus).
+  Anzahl ändern mit `min_cyber_tags = 1` unter `[llm]` (0 = aus).
 - **Sprache:** Der Prompt ist englisch (damit kommen die Modelle am besten zurecht); die Tag-Namen bleiben
   deutsch, eigene Begründungen in den Belegen schreibt die KI auf Deutsch.
 - **Prompt ansehen:** `python news_bot.py --prompt` schreibt genau das, was an die KI geht – mit deiner

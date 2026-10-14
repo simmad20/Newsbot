@@ -62,7 +62,7 @@ PFLICHT_AESTE = (
 )
 KI_AST = ("Auftragstags", "HSC", "HSC-KI")
 CYBER_AST = ("Cyber",)       # Ast im Tag-Baum, aus dem ein relevanter Artikel genug Tags haben muss
-STANDARD_MIN_CYBER_TAGS = 3  # [llm] min_cyber_tags – 0 schaltet die Regel aus
+STANDARD_MIN_CYBER_TAGS = 1  # [llm] min_cyber_tags – 0 schaltet die Regel aus
 KI_ERSATZ = "[KI_]Tools und Usecases"
 MAX_TOKENS = 16000         # Denken + Antwort; 20 Artikel brauchen meist nur einen Bruchteil davon
 DEEPSEEK_MAX_TOKENS = 8000  # reicht ohne Denkmodus für 5 Artikel mit je 25 Tags samt Beleg
@@ -234,15 +234,15 @@ Only this topic is monitored: {thema}.
 - When in doubt: relevant if the title or preview explicitly addresses the topic; otherwise not.{cyber_regel}"""
 
 CYBER_REGEL = """
-- Hard threshold: an article is relevant only if at least {anzahl} different tags from the „{ast}“
+- Hard threshold: an article is relevant only if {mindestens} from the „{ast}“
   branch can be backed by evidence – i.e. tags whose path starts with „{ast} >“ (e.g. Ransomware,
   Phishing, Datenleck, Sicherheitslücke, Schadsoftware, Künstliche Intelligenz, Verschlüsselung). Tags
   from other branches do not count – not even „[S]1 Cyber“, „Soziale Medien“, „Erpressung“ or
-  „Privatsphäre“. Check this before anything else. If you find fewer than {anzahl} such tags, the
-  article is not relevant enough: "relevant": false and an empty tag list.
+  „Privatsphäre“. Check this before anything else. If you find {zu_wenig}, the article is not
+  relevant enough: "relevant": false and an empty tag list.
 - Example: a report about a teenager who was blackmailed via Instagram is about extortion and social
   media – but without concrete technology (such as phishing, malware, hacked accounts, a data leak)
-  there are not three Cyber tags, so it is not relevant. A report about a ransomware gang that
+  there is {kein_beleg}, so it is not relevant. A report about a ransomware gang that
   exploits a vulnerability to encrypt hospital systems and steal data supports Ransomware,
   Sicherheitslücke and Datenleck – relevant."""
 
@@ -380,12 +380,16 @@ def cyber_mindestens(tags: dict[str, str], thema: str, min_cyber_tags: int) -> i
 def system_prompt(tags: dict[str, str], thema: str, min_cyber_tags: int = STANDARD_MIN_CYBER_TAGS) -> str:
     anzahl = cyber_mindestens(tags, thema, min_cyber_tags)
     ast = " > ".join(CYBER_AST)
-    cyber_regel = CYBER_REGEL.format(anzahl=anzahl, ast=ast) if anzahl else ""
+    mindestens = "at least one tag" if anzahl == 1 else f"at least {anzahl} different tags"
+    zu_wenig = "no such tag" if anzahl == 1 else f"fewer than {anzahl} such tags"
+    kein_beleg = "no Cyber tag" if anzahl == 1 else f"no set of {anzahl} Cyber tags"
+    cyber_regel = CYBER_REGEL.format(mindestens=mindestens, zu_wenig=zu_wenig, kein_beleg=kein_beleg,
+                                     ast=ast) if anzahl else ""
     filter_text = FILTER.format(thema=thema, cyber_regel=cyber_regel) if thema else KEIN_FILTER
     blaetter = unterste_tags(tags)
     pflicht, _ = pflicht_regeln(blaetter)
-    cyber_kontrolle = (f"\n- Relevant only with at least {anzahl} evidence-backed tags from „{ast}“ – otherwise "
-                       f"\"relevant\": false?") if anzahl else ""
+    cyber_kontrolle = (f"\n- Relevant only with {mindestens.replace('tag', 'evidence-backed tag', 1)} from „{ast}“ – "
+                       f"otherwise \"relevant\": false?") if anzahl else ""
     return ANLEITUNG.format(filter=filter_text, min_tags=MIN_TAGS_PRO_ARTIKEL, max_tags=MAX_TAGS_PRO_ARTIKEL,
                             pflicht=pflicht, cyber_kontrolle=cyber_kontrolle, tag_liste=tag_liste(blaetter))
 
@@ -506,8 +510,8 @@ class TagVergabe:
         if verworfen:
             log.info("KI-Tags: %d unbekannte oder übergeordnete Tag-Namen verworfen.", verworfen)
         if zu_wenig_cyber:
-            log.info("KI-Tags: %d Artikel aussortiert – weniger als %d Tags aus „%s“.", zu_wenig_cyber, self.min_cyber,
-                     " > ".join(CYBER_AST))
+            grund = "kein Tag" if self.min_cyber == 1 else f"weniger als {self.min_cyber} Tags"
+            log.info("KI-Tags: %d Artikel aussortiert – %s aus „%s“.", zu_wenig_cyber, grund, " > ".join(CYBER_AST))
         zu_wenig = [a for a in stapel if a.get("relevant") and not a["tags_offen"] and len(a["tags"]) < MIN_TAGS_PRO_ARTIKEL]
         if zu_wenig:
             log.info("KI-Tags: %d Artikel mit weniger als %d Tags.", len(zu_wenig), MIN_TAGS_PRO_ARTIKEL)
