@@ -318,6 +318,8 @@ Statt in `config.toml` darf der Schlüssel auch in der Umgebungsvariable `DEEPSE
   Ast „Cyber“ belegen lassen (z. B. Ransomware, Phishing, Datenleck – nicht „[S]1 Cyber“, „Soziale Medien“
   oder „Erpressung“). Das steht im Prompt und wird vom Bot zusätzlich nachgezählt; zu wenige → aussortiert.
   Anzahl ändern mit `min_cyber_tags = 3` unter `[llm]` (0 = aus).
+- **Sprache:** Der Prompt ist englisch (damit kommen die Modelle am besten zurecht); die Tag-Namen bleiben
+  deutsch, eigene Begründungen in den Belegen schreibt die KI auf Deutsch.
 - **Prompt ansehen:** `python news_bot.py --prompt` schreibt genau das, was an die KI geht – mit deiner
   aktuellen Tag-Liste – in `bot/prompt-vorschau.txt` (ansehen z. B. mit `less prompt-vorschau.txt`).
 - **Denkmodus (DeepSeek):** ist aus – für Tags reicht der ausführliche Prompt, und Nachdenken kostete
