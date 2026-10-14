@@ -61,6 +61,8 @@ PFLICHT_AESTE = (
      "Nachrichtenseite"),
 )
 KI_AST = ("Auftragstags", "HSC", "HSC-KI")
+CYBER_AST = ("Cyber",)       # Ast im Tag-Baum, aus dem ein relevanter Artikel genug Tags haben muss
+STANDARD_MIN_CYBER_TAGS = 3  # [llm] min_cyber_tags – 0 schaltet die Regel aus
 KI_ERSATZ = "[KI_]Tools und Usecases"
 MAX_TOKENS = 16000         # Denken + Antwort; 20 Artikel brauchen meist nur einen Bruchteil davon
 DEEPSEEK_MAX_TOKENS = 8000  # reicht ohne Denkmodus für 5 Artikel mit je 25 Tags samt Beleg
@@ -193,7 +195,7 @@ Regeln:
 Selbstkontrolle vor der Antwort (still, nicht ausgeben):
 - Alle elf Blickwinkel durchgegangen?
 - Jeder Tag durch Titel oder Vorschau belegt – und der Beleg steht dabei?
-- Struktur, Geografie, Dokumententyp, Quellentyp und Zeitraum vergeben – bei KI-Themen auch HSC-KI?
+- Struktur, Geografie, Dokumententyp, Quellentyp und Zeitraum vergeben – bei KI-Themen auch HSC-KI?{cyber_kontrolle}
 - Jeder Name Zeichen für Zeichen wie in der Liste?
 - Weniger als {min_tags} Tags? Dann die übersprungenen Blickwinkel noch einmal.
 - Mehr als {max_tags}? Dann nur die wichtigsten behalten, wichtigste zuerst.
@@ -226,7 +228,20 @@ Beobachtet wird nur dieses Thema: {thema}.
   über soziale Netzwerke, Chipindustrie, ein Tech-Konzern, ein Datenleck bei einer Firma.
 - Eine Nebenrolle reicht nicht: Ein Politiker äußert sich auf X, ein Spiel wird gestreamt, ein
   Unfall wurde gefilmt – das ist nicht relevant.
-- Im Zweifel: relevant, wenn der Titel oder die Vorschau das Thema ausdrücklich anspricht; sonst nicht."""
+- Im Zweifel: relevant, wenn der Titel oder die Vorschau das Thema ausdrücklich anspricht; sonst nicht.{cyber_regel}"""
+
+CYBER_REGEL = """
+- Harte Grenze: relevant ist ein Artikel nur, wenn sich mindestens {anzahl} verschiedene Tags aus dem Ast
+  „{ast}“ belegen lassen – also Tags, deren Pfad mit „{ast} >“ beginnt (z. B. Ransomware, Phishing,
+  Datenleck, Sicherheitslücke, Schadsoftware, Künstliche Intelligenz, Verschlüsselung). Tags aus anderen
+  Ästen zählen dafür nicht, auch nicht „[S]1 Cyber“, „Soziale Medien“, „Erpressung“ oder „Privatsphäre“.
+  Prüfe das vor allem anderen. Findest du weniger als {anzahl} solche Tags, ist der Artikel nicht
+  relevant genug: "relevant": false und eine leere Tag-Liste.
+- Beispiel: Ein Bericht über einen Jugendlichen, der über Instagram erpresst wurde, handelt von
+  Erpressung und sozialen Medien – aber ohne konkrete Technik (wie Phishing, Schadsoftware, gehackte
+  Konten, Datenleck) gibt es keine drei Cyber-Tags, also nicht relevant. Ein Bericht über eine
+  Ransomware-Gruppe, die über eine Sicherheitslücke Kliniken verschlüsselt und Daten stiehlt, belegt
+  Ransomware, Sicherheitslücke und Datenleck – relevant."""
 
 KEIN_FILTER = """\
 Es gibt keinen Themenfilter – setze bei jedem Artikel "relevant": true."""
@@ -275,6 +290,9 @@ def einstellungen(cfg: dict) -> dict:
     llm["effort"] = effort if effort in EFFORTS else "low"
     thema = llm.get("thema")
     llm["thema"] = " ".join(thema.split())[:500] if isinstance(thema, str) else STANDARD_THEMA
+    anzahl = llm.get("min_cyber_tags")
+    llm["min_cyber_tags"] = anzahl if isinstance(anzahl, int) and not isinstance(anzahl, bool) and 0 <= anzahl <= 10 \
+        else STANDARD_MIN_CYBER_TAGS
     llm["denken"] = llm.get("denken") is True  # DeepSeek-Denkmodus: gründlicher, aber viel mehr Tokens und Zeit
     return llm
 
@@ -348,19 +366,31 @@ def pflicht_regeln(blaetter: dict[str, str]) -> tuple[str, list[tuple[tuple[str,
     return "- Pflicht – aus jedem dieser Äste mindestens ein Tag:\n" + "\n".join(zeilen), ersatz
 
 
-def system_prompt(tags: dict[str, str], thema: str) -> str:
-    filter_text = FILTER.format(thema=thema) if thema else KEIN_FILTER
+def cyber_mindestens(tags: dict[str, str], thema: str, min_cyber_tags: int) -> int:
+    """Wie viele Tags aus dem Ast „Cyber“ ein relevanter Artikel braucht (0 = Regel aus)."""
+    if not thema or min_cyber_tags <= 0:
+        return 0
+    p = pfade(tags)
+    return min_cyber_tags if any(im_ast(p[n], CYBER_AST) for n in unterste_tags(tags)) else 0
+
+
+def system_prompt(tags: dict[str, str], thema: str, min_cyber_tags: int = STANDARD_MIN_CYBER_TAGS) -> str:
+    anzahl = cyber_mindestens(tags, thema, min_cyber_tags)
+    ast = " > ".join(CYBER_AST)
+    cyber_regel = CYBER_REGEL.format(anzahl=anzahl, ast=ast) if anzahl else ""
+    filter_text = FILTER.format(thema=thema, cyber_regel=cyber_regel) if thema else KEIN_FILTER
     blaetter = unterste_tags(tags)
     pflicht, _ = pflicht_regeln(blaetter)
+    cyber_kontrolle = f"\n- Relevant nur mit mindestens {anzahl} belegten Tags aus „{ast}“ – sonst \"relevant\": false?" if anzahl else ""
     return ANLEITUNG.format(filter=filter_text, min_tags=MIN_TAGS_PRO_ARTIKEL, max_tags=MAX_TAGS_PRO_ARTIKEL,
-                            pflicht=pflicht, tag_liste=tag_liste(blaetter))
+                            pflicht=pflicht, cyber_kontrolle=cyber_kontrolle, tag_liste=tag_liste(blaetter))
 
 
 def prompt_vorschau(llm: dict, tags: dict[str, str]) -> str:
     """Genau das, was an die KI geht – zum Kontrollieren (python news_bot.py --prompt)."""
     beispiel = [{"titel": "Hacker legen Kliniken in Wien lahm", "teaser": "Ransomware verschlüsselt Patientendaten.",
                  "medium": "Beispiel-Zeitung"}]
-    system = system_prompt(tags, llm["thema"]) + ("" if llm["anbieter"] == "anthropic" else JSON_FORM)
+    system = system_prompt(tags, llm["thema"], llm["min_cyber_tags"]) + ("" if llm["anbieter"] == "anthropic" else JSON_FORM)
     teile = [
         f"Anbieter: {NAMEN[llm['anbieter']]} · Modell: {llm['modell']}"
         + (f" · Denkmodus: {'an' if llm['denken'] else 'aus'}" if llm["anbieter"] == "deepseek" else f" · effort: {llm['effort']}"),
@@ -401,7 +431,8 @@ class TagVergabe:
         self.immer = [self.nach_klein[t.lower()] for t in IMMER if t.lower() in self.nach_klein]
         _, self.ersatz = pflicht_regeln(blaetter)
         self.ki_ersatz = self.nach_klein.get(KI_ERSATZ.lower())
-        prompt = system_prompt(tags, llm["thema"])
+        prompt = system_prompt(tags, llm["thema"], llm["min_cyber_tags"])
+        self.min_cyber = cyber_mindestens(tags, llm["thema"], llm["min_cyber_tags"])
         if self.anbieter == "anthropic":
             try:
                 import anthropic
@@ -445,7 +476,7 @@ class TagVergabe:
         for e in eintraege if isinstance(eintraege, list) else []:
             if isinstance(e, dict) and isinstance(e.get("tags"), list):
                 gefunden[str(e.get("id"))] = e
-        verworfen = 0
+        verworfen = zu_wenig_cyber = 0
         for i, a in enumerate(stapel):
             if str(i) not in gefunden:
                 continue
@@ -459,10 +490,17 @@ class TagVergabe:
                     verworfen += 1
                 elif name not in belege:
                     belege[name] = " ".join(beleg.split())[:MAX_BELEG] if isinstance(beleg, str) else ""
+            cyber = sum(im_ast(self.pfade.get(t, []), CYBER_AST) for t in belege)
+            if a["relevant"] and cyber < self.min_cyber:  # harte Grenze, egal was die KI meint
+                a["relevant"] = False
+                zu_wenig_cyber += 1
             a["belege"] = self._ergaenze(belege) if a["relevant"] else {}
             a["tags"], a["tags_offen"] = list(a["belege"]), False
         if verworfen:
             log.info("KI-Tags: %d unbekannte oder übergeordnete Tag-Namen verworfen.", verworfen)
+        if zu_wenig_cyber:
+            log.info("KI-Tags: %d Artikel aussortiert – weniger als %d Tags aus „%s“.", zu_wenig_cyber, self.min_cyber,
+                     " > ".join(CYBER_AST))
         zu_wenig = [a for a in stapel if a.get("relevant") and not a["tags_offen"] and len(a["tags"]) < MIN_TAGS_PRO_ARTIKEL]
         if zu_wenig:
             log.info("KI-Tags: %d Artikel mit weniger als %d Tags.", len(zu_wenig), MIN_TAGS_PRO_ARTIKEL)
