@@ -296,8 +296,9 @@ def pruefe_ziel(url: str) -> None:
     except (OSError, UnicodeError, ValueError) as e:
         raise AbrufFehler(f"{url}: Adresse nicht gefunden") from e
     for *_, sockaddr in adressen:
-        if not listen.ist_oeffentliche_ip(ipaddress.ip_address(str(sockaddr[0]).split("%")[0])):
-            raise AbrufFehler(f"{url}: zeigt auf ein privates Netz – aus Sicherheitsgründen gesperrt")
+        ip = ipaddress.ip_address(str(sockaddr[0]).split("%")[0])
+        if not listen.ist_oeffentliche_ip(ip):
+            raise AbrufFehler(f"{url}: zeigt auf ein privates Netz ({ip}) – aus Sicherheitsgründen gesperrt")
 
 
 def sicher_abrufen(url: str, max_bytes: int = MAX_SEITE_BYTES) -> requests.Response:
