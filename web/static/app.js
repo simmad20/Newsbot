@@ -422,6 +422,15 @@ const DATUM_HINWEIS = {
   Fundzeit: ["Fundzeit", "Die Seite nennt kein Datum – angezeigt wird, wann der Bot den Artikel gefunden hat"],
 };
 
+const TAGS_OFFEN = "Tags fehlen – die KI hat für diesen Artikel nicht geantwortet (nachholen: python news_bot.py --retag)";
+
+// Autor: nur natürliche Personen. Nennt die Quelle eine Redaktion, Agentur, Website o. Ä., gilt er als ungenannt.
+function autorHinweis(a) {
+  return a.autor_angabe
+    ? `Die Quelle nennt „${a.autor_angabe}“ – keine natürliche Person`
+    : "Die Quelle nennt keinen Autor";
+}
+
 function artikelKarte(a, kompakt) {
   const d = a.datum ? new Date(a.datum) : null;
   const datumOk = d && !isNaN(d);
@@ -438,7 +447,9 @@ function artikelKarte(a, kompakt) {
     kompakt ? null : el("span", { class: "medium-marke" }, el("span", { class: "farb-punkt", "aria-hidden": "true" }), a.medium),
     istNeu(a) ? el("span", { class: "neu-marke" }, "neu") : null,
     a.gemeldet ? el("span", { class: "gemeldet-marke", title: "Benachrichtigung wurde gesendet" }, "gemeldet") : null,
-    datumOk && DATUM_HINWEIS[a.datum_art] ? el("span", { class: "hinweis-marke", title: DATUM_HINWEIS[a.datum_art][1] }, DATUM_HINWEIS[a.datum_art][0]) : null);
+    datumOk && DATUM_HINWEIS[a.datum_art] ? el("span", { class: "hinweis-marke", title: DATUM_HINWEIS[a.datum_art][1] }, DATUM_HINWEIS[a.datum_art][0]) : null,
+    a.autor ? null : el("span", { class: "hinweis-marke achtung", title: autorHinweis(a) }, "Autor ungenannt"),
+    a.tags_offen ? el("span", { class: "hinweis-marke achtung", title: TAGS_OFFEN }, "Tags fehlen") : null);
 
   const titel = el("h3", { class: "artikel-titel" }, url
     ? el("a", { href: url, target: "_blank", rel: "noopener noreferrer" }, a.titel)
@@ -456,7 +467,8 @@ function artikelKarte(a, kompakt) {
   const details = offen ? el("div", { class: "artikel-details", id },
     el("dl", { class: "details-raster" },
       ...detailFeld("Quelle", a.medium, el("span", { class: "leise" }, ` · ${hostVon(a.url)}`)),
-      ...detailFeld("Autor", a.autor || el("span", { class: "leise" }, "im Feed nicht angegeben")),
+      ...detailFeld("Autor", ...(a.autor ? [a.autor]
+        : [el("span", { class: "warnung-text" }, "ungenannt"), el("span", { class: "leise" }, ` · ${autorHinweis(a)}`)])),
       ...detailFeld(a.datum_art === "aktualisiert" ? "Aktualisiert" : "Veröffentlicht", ...(datumOk
         ? [`${datumLang(a.datum)} (${vorZeit(a.datum) || "gerade eben"})`,
           DATUM_HINWEIS[a.datum_art] ? el("span", { class: "leise" }, ` · ${DATUM_HINWEIS[a.datum_art][1]}`) : null]
@@ -466,7 +478,7 @@ function artikelKarte(a, kompakt) {
       ...detailFeld("Benachrichtigung", benachrichtigung),
       ...detailFeld("Tags", a.tags.length
         ? el("ul", { class: "tags" }, ...a.tags.map((t) => el("li", {}, tagKnopf(t, a, "d"))))
-        : el("span", { class: "leise" }, "keine"))),
+        : a.tags_offen ? el("span", { class: "warnung-text" }, TAGS_OFFEN) : el("span", { class: "leise" }, "keine"))),
     el("div", { class: "zusammenfassung" },
       el("h4", {}, "Zusammenfassung laut Feed"),
       el("p", {}, a.teaser || "Der Feed liefert keinen Vorschautext – bitte den Artikel öffnen.")),

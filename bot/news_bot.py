@@ -13,6 +13,7 @@ Aufruf:
     python news_bot.py --prompt   # den kompletten Prompt an die KI in prompt-vorschau.txt schreiben
     python news_bot.py --zuruecksetzen  # nicht angeschaute Artikel vergessen (Abgehakte, Quellen, Tags, Geräte bleiben)
     python news_bot.py --fix-dates      # fehlende Datumsangaben gespeicherter Artikel von deren Seite nachtragen
+    python news_bot.py --retag          # gespeicherte Artikel ohne Tags noch einmal taggen, bei allen den Autor prüfen
 """
 from __future__ import annotations
 
@@ -654,6 +655,63 @@ def lese_artikel(feed_inhalt: bytes, feed_url: str, jetzt: datetime, grenze: tim
     return artikel
 
 
+# --------------------------------------------------------------------------- Autor: nur natürliche Personen
+
+# Wörter, die auf Redaktion, Agentur, Medium, Firma oder Rolle hindeuten statt auf einen Menschen
+KEINE_PERSON = {
+    "redaktion", "redaktionsteam", "red", "editorial", "editor", "editors", "editorial-team", "newsroom", "newsdesk",
+    "desk", "staff", "team", "admin", "administrator", "webmaster", "moderator", "guest", "gast", "gastautor",
+    "gastbeitrag", "contributor", "contributors", "autor", "autorin", "author", "authors", "unbekannt", "unknown",
+    "anonym", "anonymous", "news", "nachrichten", "online", "media", "medien", "press", "presse", "pressestelle",
+    "pressemitteilung", "agentur", "agency", "dpa", "apa", "afp", "reuters", "ap", "kna", "epd", "sid", "ots",
+    "magazin", "magazine", "zeitung", "times", "post", "daily", "weekly", "blog", "podcast", "report", "research",
+    "labs", "lab", "intelligence", "security", "cyber", "sicherheit", "net", "it", "tech", "technology", "digital",
+    "gmbh", "ag", "inc", "ltd", "llc", "corp", "co", "group", "gruppe", "institut", "institute", "center", "centre",
+    "zentrum", "office", "amt", "bundesamt", "ministerium", "ministry", "department", "university", "universität",
+    "partner", "sponsored", "anzeige", "marketing", "communications", "kommunikation", "service", "support",
+}
+NAMENSTEILE = {"von", "van", "de", "der", "den", "di", "da", "du", "del", "della", "dos", "das", "le", "la", "zu",
+               "bin", "ibn", "al", "el", "ten", "ter", "y", "e", "dr", "prof", "mag", "ing"}
+
+
+def ist_person(name: str, medium: str = "", url: str = "") -> bool:
+    """Grob: sieht der Name nach einem Menschen aus? Mindestens zwei Wörter, groß geschrieben (auch kyrillisch usw.),
+    keine Ziffern/@, kein Wort, das auf Redaktion/Firma/Medium hindeutet, nicht der Name des Mediums oder der Seite.
+    Vorname + Nachname: ja; „Redaktion“, „heise online“, „Infopoint Security“, „llelv“: nein."""
+    name = " ".join(name.split())
+    if not name or len(name) > 80 or re.search(r"[\d@#/\\|<>()\[\]{}=_+*]", name):
+        return False
+    woerter = [w for w in re.split(r"[\s]+", name) if w]
+    if not 2 <= len(woerter) <= 5:
+        return False
+    for w in woerter:
+        kern = w.strip(".,'’-").lower()
+        if kern in KEINE_PERSON:
+            return False
+        if kern not in NAMENSTEILE and not (w[0].isupper() or (len(w) > 1 and w[0] in "'’" and w[1].isupper())):
+            return False
+    klein = name.lower()
+    for fremd in (medium.lower().strip(), (urlparse(url).hostname or "").lower().removeprefix("www.").split(".")[0]):
+        if fremd and len(fremd) >= 3 and (fremd in klein or klein in fremd):
+            return False
+    return True
+
+
+def nur_personen(angabe: str, medium: str = "", url: str = "") -> str:
+    """Aus der Autor-Angabe des Feeds/der Seite nur die natürlichen Personen (Rückfallebene, wenn die KI nicht
+    entscheidet). „Max Muster, Redaktion heise“ → „Max Muster“; „Redaktion“ → "" (= Autor ungenannt)."""
+    angabe = re.sub(r"^\s*(von|by|autor(in)?:?|author:?)\s+", "", angabe or "", flags=re.I)
+    teile = re.split(r"\s*(?:,|;|&|\||/|\bund\b|\band\b|\bmit\b|\bwith\b)\s*", angabe, flags=re.I)
+    personen = [" ".join(t.split()) for t in teile if t and ist_person(t, medium, url)]
+    return ", ".join(dict.fromkeys(personen))
+
+
+def pruefe_autor(a: dict) -> None:
+    """a["autor_angabe"] = was die Quelle nennt, a["autor"] = nur die Menschen darin (die KI kann das noch verfeinern)."""
+    a.setdefault("autor_angabe", a.get("autor") or "")
+    a["autor"] = nur_personen(a["autor_angabe"], a.get("medium", ""), a.get("url", ""))
+
+
 # --------------------------------------------------------------------------- Tags (per KI, siehe ki_tags.py)
 
 def vergib_tags(cfg: dict, state: dict, artikel: list[dict], tags: dict[str, str], test: bool) -> None:
@@ -662,6 +720,7 @@ def vergib_tags(cfg: dict, state: dict, artikel: list[dict], tags: dict[str, str
     llm = ki_tags.einstellungen(cfg)
     zu_tun = bool(tags) or bool(llm["thema"])  # ohne Tags und ohne Themenfilter gibt es nichts zu entscheiden
     for a in artikel:
+        pruefe_autor(a)
         a["relevant"], a["tags"], a["belege"], a["tags_offen"] = True, [], {}, zu_tun
     if not zu_tun or not artikel:
         return
@@ -713,8 +772,7 @@ def baue_meldung(a: dict, tz: ZoneInfo) -> dict:
         {"name": "Veröffentlicht", "value": zeit, "inline": True},
         {"name": "Tags", "value": tags[:1024], "inline": False},
     ]
-    if a["autor"]:
-        felder.insert(1, {"name": "Autor", "value": a["autor"][:1024], "inline": True})
+    felder.insert(1, {"name": "Autor", "value": a["autor"][:1024] or "ungenannt", "inline": True})
     return {
         "content": f"**[NEUER ARTIKEL] {a['tags'][0] if a['tags'] else 'Allgemein'}**",
         "embeds": [{
@@ -840,7 +898,8 @@ def merke_fuer_dashboard(state: dict, a: dict, gemeldet: bool) -> None:
     # Längen wie in web/server.py (ArtikelIn) – ein zu langer Wert würde sonst die ganze Übertragung blockieren
     eintrag = {
         "url": a["url"], "titel": a["titel"][:300], "medium": a["medium"][:200], "teaser": a["teaser"][:1200],
-        "autor": a["autor"][:200], "datum": a["datum"].isoformat() if a["datum"] else None,
+        "autor": a["autor"][:200], "autor_angabe": a.get("autor_angabe", a["autor"])[:200],
+        "datum": a["datum"].isoformat() if a["datum"] else None, "tags_offen": bool(a.get("tags_offen")),
         "datum_art": a["datum_art"], "tags": [t[:80] for t in a["tags"][:30]], "gemeldet": gemeldet, "angeschaut": False,
         "belege": {t[:80]: b[:200] for t, b in (a.get("belege") or {}).items() if t in a["tags"][:30] and b},
         "weg": a.get("weg", "feed"),
@@ -1381,6 +1440,51 @@ def datum_nachtragen(cfg: dict) -> None:
              "beim nächsten Start des Bots.", zaehler["veröffentlicht"], zaehler["nur Datum"], zaehler["Fundzeit"])
 
 
+def neu_taggen(cfg: dict) -> None:
+    """Gespeicherte Artikel ohne Tags (auch abgehakte) noch einmal der KI geben. Was dabei als nicht zum Thema
+    erkannt wird, verschwindet – außer es ist abgehakt. Bei allen gespeicherten Artikeln wird außerdem der Autor
+    geprüft (nur natürliche Personen). Die Webseite übernimmt alles beim nächsten Start des Bots."""
+    if not hole_lock():
+        sys.exit("Der Bot läuft gerade – erst beenden (pkill -f news_bot.py), dann --retag.")
+    state = lade_state()
+    tags, _ = listen.lade_tags(TAGS_DATEI)
+    for e in state["verlauf"]:
+        e.setdefault("autor_angabe", e.get("autor") or "")
+        e["autor"] = nur_personen(e["autor_angabe"], e.get("medium", ""), e.get("url", ""))
+    ohne_autor = sum(1 for e in state["verlauf"] if not e["autor"])
+    offen = [e for e in state["verlauf"] if not e.get("tags")]
+    log.info("%d gespeicherte Artikel, %d davon ohne natürliche Person als Autor (→ „Autor ungenannt“), %d ohne Tags.",
+             len(state["verlauf"]), ohne_autor, len(offen))
+    weg: list[str] = []
+    getaggt = noch_offen = 0
+    if offen:
+        artikel = [{"url": e["url"], "titel": e["titel"], "teaser": e.get("teaser", ""), "medium": e.get("medium", ""),
+                    "autor_angabe": e["autor_angabe"], "eintrag": e} for e in offen]
+        vergib_tags(cfg, state, artikel, tags, test=False)
+        for a in artikel:
+            e = a["eintrag"]
+            e["autor"] = a["autor"][:200]
+            if a["tags_offen"]:
+                e["tags_offen"] = True
+                noch_offen += 1
+            elif not a["relevant"] and not e.get("angeschaut"):
+                weg.append(e["url"])
+            else:
+                e["tags"] = [t[:80] for t in a["tags"][:30]]
+                e["belege"] = {t[:80]: b[:200] for t, b in a["belege"].items() if t in e["tags"] and b}
+                e["tags_offen"] = False
+                getaggt += bool(e["tags"])
+    if weg:
+        entfernt = set(weg)
+        state["verlauf"] = [e for e in state["verlauf"] if e["url"] not in entfernt]
+        state["sync_artikel"] = [e for e in state["sync_artikel"] if e["url"] not in entfernt]
+        state["sync_entfernt"] = list(dict.fromkeys(state["sync_entfernt"] + weg))[-1000:]
+    speichere_state(state)
+    log.info("Fertig: %d Artikel neu getaggt, %d nicht zum Thema und entfernt, %d weiterhin ohne Tags (KI ohne "
+             "Antwort – später noch einmal versuchen). Die Webseite übernimmt das beim nächsten Start des Bots.",
+             getaggt, len(weg), noch_offen)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Kleiner News-Bot mit eigener Webseite")
     gruppe = parser.add_mutually_exclusive_group()
@@ -1394,6 +1498,9 @@ def main() -> None:
     gruppe.add_argument("--fix-dates", action="store_true",
                         help="fehlende Datumsangaben gespeicherter Artikel (auch abgehakter) von der Artikelseite "
                              "nachtragen")
+    gruppe.add_argument("--retag", action="store_true",
+                        help="gespeicherte Artikel ohne Tags (auch abgehakte) noch einmal von der KI taggen lassen "
+                             "und bei allen den Autor prüfen")
     args = parser.parse_args()
     richte_logging_ein()
     if args.zuruecksetzen:
@@ -1402,6 +1509,10 @@ def main() -> None:
     cfg = lade_config()
     if args.fix_dates:
         datum_nachtragen(cfg)
+        return
+    if args.retag:
+        listen.richte_ein(QUELLEN_DATEI, TAGS_DATEI, cfg.get("tags"))
+        neu_taggen(cfg)
         return
     listen.richte_ein(QUELLEN_DATEI, TAGS_DATEI, cfg.get("tags"))
     llm = ki_tags.einstellungen(cfg)

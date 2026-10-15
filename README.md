@@ -375,6 +375,16 @@ Seite. Gibt es für das Ressort einen eigenen Feed, trag besser den ein.
   angeschaute Artikel der letzten 24 Stunden (bzw. des Höchstalters) kommen dann neu getaggt wieder.
   `vapid_privat.pem` **nie** löschen (siehe unten).
 
+- **Autor = nur Menschen:** Als Autor gilt nur eine natürliche Person. Nennt die Quelle eine Redaktion,
+  Agentur (dpa, APA …), die Website selbst, eine Firma, eine Rolle („Admin“) oder einen Benutzernamen,
+  steht auf der Webseite rot markiert **„Autor ungenannt“** (in den Details mit der ursprünglichen
+  Angabe). Das entscheidet die KI; ohne KI eine einfache Regel im Bot (mindestens Vor- und Nachname).
+
+- **Tags nachholen:** Bot beenden, dann im Ordner `bot`: `python news_bot.py --retag`. Gespeicherte
+  Artikel ohne Tags (auch abgehakte) gehen noch einmal an die KI; was dabei als nicht zum Thema erkannt
+  wird, verschwindet (abgehakte bleiben). Außerdem prüft er bei allen gespeicherten Artikeln den Autor.
+  Artikel, für die die KI nicht geantwortet hat, sind auf der Webseite mit **„Tags fehlen“** markiert.
+
 - **Fehlende Daten nachtragen:** Bot beenden, dann im Ordner `bot`: `python news_bot.py --fix-dates`.
   Er ruft für alle gespeicherten Artikel ohne Datum (auch abgehakte) die Seite noch einmal ab und trägt
   Datum und Uhrzeit nach – nach denselben Regeln wie oben. Die Webseite übernimmt es beim nächsten Start.

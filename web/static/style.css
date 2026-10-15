@@ -368,6 +368,7 @@ input::placeholder { color: var(--leise); }
 .gemeldet-marke, .hinweis-marke { padding: 1px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; }
 .gemeldet-marke { background: rgba(76, 195, 138, 0.14); color: var(--gruen-text); }
 .hinweis-marke { background: var(--chip); color: var(--chip-text); }
+.hinweis-marke.achtung { background: var(--fehler-grund); color: var(--fehler); }
 
 .artikel-titel { margin: 0; font-size: 17px; font-weight: 600; line-height: 1.35; color: var(--text-hell); overflow-wrap: anywhere; }
 .artikel-titel a { color: inherit; }

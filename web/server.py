@@ -140,7 +140,9 @@ class ArtikelIn(BaseModel):
     titel: str = Field(max_length=300)
     medium: str = Field(max_length=200)
     teaser: str = Field("", max_length=1200)
-    autor: str = Field("", max_length=200)
+    autor: str = Field("", max_length=200)  # nur natürliche Personen – leer = „Autor ungenannt“
+    autor_angabe: str = Field("", max_length=200)  # was die Quelle als Autor nennt (z. B. „Redaktion“)
+    tags_offen: bool = False  # die KI hat (noch) keine Tags vergeben
     datum: Optional[str] = Field(None, max_length=40)
     datum_art: str = Field("", max_length=20)
     tags: list[Annotated[str, Field(max_length=80)]] = Field(default_factory=list, max_length=50)
