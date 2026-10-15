@@ -18,7 +18,8 @@ Ohne api_key liest der Bot den Schlüssel aus DEEPSEEK_API_KEY bzw. ANTHROPIC_AP
 Ablauf pro Prüfung: Die Tag-Liste steht im System-Prompt und wird zwischengespeichert (Claude: Prompt-
 Caching für eine Stunde, DeepSeek: automatisch) – wiederholte Anfragen kosten dafür nur einen Bruchteil.
 Die Artikel gehen in Paketen zu je 5 hinaus; die Antwort ist JSON (bei Claude per Schema erzwungen).
-Zurück kommen nur Tags, die es in tags.csv wirklich gibt – alles andere wird verworfen.
+Zurück kommen nur Tags, die es in tags.csv wirklich gibt und die nicht gesperrt sind (GESPERRT: Auftragstags außer
+HSC-KI, Social Media Post, State of the Art, Struktur außer [S]1 Cyber) – alles andere wird verworfen.
 """
 from __future__ import annotations
 
@@ -47,15 +48,17 @@ ERGAENZT = "vom Bot ergänzt – Pflicht-Ast ohne Tag von der KI"
 # Tags aus diesen obersten Ästen ordnen den Artikel ein (Struktur, Dokumenttyp, Auftrag …); sie stehen in der
 # Liste eines Artikels hinter den inhaltlichen Tags, damit vorne (Discord, Benachrichtigung) das Thema steht.
 ORDNUNGS_AESTE = ("struktur", "newsinfo", "auftragstags")
-IMMER = ("[S]1 Cyber",)  # bekommt jeder Artikel, der zum Thema gehört
-STRUKTUR_ZUSATZ = (("[S]2 KriMiSi", "for crisis, military or security topics"),
-                   ("[S]3 InnoTech", "for innovation, emerging technology or research"))
+IMMER = ("[S]1 Cyber",)  # bekommt jeder Artikel, der zum Thema gehört – der einzige Struktur-Tag
+# Nie vergeben: Tags, in deren Pfad einer dieser Namen steht (auch der Tag selbst) … außer unter diesen Ästen.
+# Sie fehlen in der Liste an die KI; nennt die KI sie trotzdem, verwirft der Bot sie.
+GESPERRT = ("Auftragstags", "Social Media Post", "State of the Art", "Struktur")
+TROTZDEM_ERLAUBT = (("Auftragstags", "HSC", "HSC-KI"), ("Struktur", "[S]1 Cyber"))
 # Pflicht: aus jedem dieser Äste mindestens ein Tag. (Ast, Hinweis für die KI, Ersatz-Tag falls die KI keinen nimmt)
 PFLICHT_AESTE = (
     (("Newsinfo", "Dokumententyp"), "usually „News“; use „Studie“, „Meinungsäußerung“, „Strategische Info“ etc. "
      "when that fits better", "News"),
     (("Newsinfo", "zeitlicher Aspekt"), "the time frame the article is about – for current events „{zeitraum}“; "
-     "add „State of the Art“, „Trendbrüche“ or „Weak Signals“ when they fit", "{zeitraum}"),
+     "add „Trendbrüche“ or „Weak Signals“ when they fit", "{zeitraum}"),
     (("Newsinfo", "geographische Lokationen"), "every country involved, each with its own country tag (never the "
      "continent – it is only a parent category), plus seas, airspace, territorial waters, Arctic/Antarctic and "
      "partially recognised territories (e.g. Taiwan, Kosovo) when mentioned; cross-border, worldwide or „the whole "
@@ -195,14 +198,19 @@ Rules:
   words do not appear verbatim. It does not support „Atomarer Konflikt“ just because the article is
   about security.
 {pflicht}
+- Never assign: anything under „Auftragstags“ except „Auftragstags > HSC > HSC-KI > …“, anything under
+  „Social Media Post“, „State of the Art“, and no structure tag other than „[S]1 Cyber“ (no „[S]2
+  KriMiSi“, no „[S]3 InnoTech“). These tags are left out of the list on purpose – do not use them even
+  if you know them.
 - Countries: only if the article is about events or actors there. The fact that the source comes
   from a country does not make the article an article about that country.
 
 Self-check before answering (silently, do not output it):
 - Did you go through all eleven lenses?
 - Is every tag backed by the title or preview – and is the evidence included?
-- Did you assign structure, geography, document type, source type and time frame – and HSC-KI for
-  AI topics?{cyber_kontrolle}
+- Did you assign structure („[S]1 Cyber“ only), geography, document type, source type and time frame
+  – and HSC-KI for AI topics?
+- No forbidden tags (other Auftragstags, Social Media Post, State of the Art, other structure tags)?{cyber_kontrolle}
 - Is every tag name spelled character for character as in the list?
 - Fewer than {min_tags} tags? Then go through the lenses you skipped again.
 - More than {max_tags}? Then keep only the most important ones, most important first.
@@ -327,6 +335,23 @@ def unterste_tags(tags: dict[str, str]) -> dict[str, str]:
     return {n: t for n, t in tags.items() if n.lower() not in oberbegriffe}
 
 
+def gesperrt(tag_pfade: list[tuple[str, ...]]) -> bool:
+    """Darf nie vergeben werden (siehe GESPERRT) – es sei denn, einer seiner Pfade ist erlaubt."""
+    sperre = {x.lower() for x in GESPERRT}
+    ausnahmen = [tuple(x.lower() for x in a) for a in TROTZDEM_ERLAUBT]
+    for p in tag_pfade:
+        klein = tuple(x.lower() for x in p)
+        if not sperre & set(klein) or any(klein[:len(a)] == a for a in ausnahmen):
+            return False
+    return True
+
+
+def vergebbare_tags(tags: dict[str, str]) -> dict[str, str]:
+    """Was die KI vergeben darf: unterste Tags ohne die gesperrten."""
+    p = pfade(tags)
+    return {n: t for n, t in unterste_tags(tags).items() if not gesperrt(p[n])}
+
+
 def im_ast(tag_pfade: list[tuple[str, ...]], ast: tuple[str, ...]) -> bool:
     klein = tuple(x.lower() for x in ast)
     return any(len(p) > len(ast) and tuple(x.lower() for x in p[:len(ast)]) == klein for p in tag_pfade)
@@ -354,9 +379,7 @@ def pflicht_regeln(blaetter: dict[str, str]) -> tuple[str, list[tuple[tuple[str,
     zeilen, ersatz = [], []
     immer = [vorhanden[t.lower()] for t in IMMER if t.lower() in vorhanden]
     if immer:
-        zusatz = [f"„{vorhanden[t.lower()]}“ {wann}" for t, wann in STRUKTUR_ZUSATZ if t.lower() in vorhanden]
-        zeilen.append(f"  - Struktur – always: {', '.join(f'„{t}“' for t in immer)}"
-                      + (f"; additionally {' and '.join(zusatz)}" if zusatz else ""))
+        zeilen.append(f"  - Struktur – always exactly {', '.join(f'„{t}“' for t in immer)} and no other structure tag")
     for ast, hinweis, ersatz_tag in PFLICHT_AESTE:
         if any(im_ast(p[n], ast) for n in blaetter):
             zeilen.append(f"  - {' > '.join(ast)} > …: {hinweis.format(zeitraum=zeitraum or 'the current period')}")
@@ -381,7 +404,7 @@ def cyber_mindestens(tags: dict[str, str], thema: str, min_cyber_tags: int) -> i
     if not thema or min_cyber_tags <= 0:
         return 0
     p = pfade(tags)
-    return min_cyber_tags if any(im_ast(p[n], CYBER_AST) for n in unterste_tags(tags)) else 0
+    return min_cyber_tags if any(im_ast(p[n], CYBER_AST) for n in vergebbare_tags(tags)) else 0
 
 
 def system_prompt(tags: dict[str, str], thema: str, min_cyber_tags: int = STANDARD_MIN_CYBER_TAGS) -> str:
@@ -393,7 +416,7 @@ def system_prompt(tags: dict[str, str], thema: str, min_cyber_tags: int = STANDA
     cyber_regel = CYBER_REGEL.format(mindestens=mindestens, zu_wenig=zu_wenig, kein_beleg=kein_beleg,
                                      ast=ast) if anzahl else ""
     filter_text = FILTER.format(thema=thema, cyber_regel=cyber_regel) if thema else KEIN_FILTER
-    blaetter = unterste_tags(tags)
+    blaetter = vergebbare_tags(tags)
     pflicht, _ = pflicht_regeln(blaetter)
     cyber_kontrolle = (f"\n- Relevant only with {mindestens.replace('tag', 'evidence-backed tag', 1)} from „{ast}“ – "
                        f"otherwise \"relevant\": false?") if anzahl else ""
@@ -409,7 +432,8 @@ def prompt_vorschau(llm: dict, tags: dict[str, str]) -> str:
     teile = [
         f"Anbieter: {NAMEN[llm['anbieter']]} · Modell: {llm['modell']}"
         + (f" · Denkmodus: {'an' if llm['denken'] else 'aus'}" if llm["anbieter"] == "deepseek" else f" · effort: {llm['effort']}"),
-        f"Tag-Liste: {len(unterste_tags(tags))} unterste von {len(tags)} Tags · Pakete zu {STAPEL} Artikeln",
+        f"Tag-Liste: {len(vergebbare_tags(tags))} vergebbare von {len(tags)} Tags (nur unterste, ohne gesperrte) "
+        f"· Pakete zu {STAPEL} Artikeln",
         "", "═" * 30 + " SYSTEM-PROMPT (bleibt immer gleich, wird zwischengespeichert) " + "═" * 30, "", system,
         "", "═" * 30 + " NACHRICHT PRO PAKET (Beispiel mit 1 Artikel) " + "═" * 30, "", artikel_nachricht(beispiel),
     ]
@@ -440,8 +464,8 @@ class TagVergabe:
         self.thinking_parameter = True  # fällt weg, falls DeepSeek ihn nicht kennt
         self.modell = llm["modell"]
         self.effort = llm["effort"]
-        blaetter = unterste_tags(tags)
-        self.nach_klein = {n.lower(): n for n in blaetter}  # nur unterste Tags sind erlaubt
+        blaetter = vergebbare_tags(tags)
+        self.nach_klein = {n.lower(): n for n in blaetter}  # nur unterste, nicht gesperrte Tags sind erlaubt
         self.pfade = pfade(tags)
         self.immer = [self.nach_klein[t.lower()] for t in IMMER if t.lower() in self.nach_klein]
         _, self.ersatz = pflicht_regeln(blaetter)
@@ -515,7 +539,7 @@ class TagVergabe:
             a["belege"] = self._ergaenze(belege) if a["relevant"] else {}
             a["tags"], a["tags_offen"] = list(a["belege"]), False
         if verworfen:
-            log.info("KI-Tags: %d unbekannte oder übergeordnete Tag-Namen verworfen.", verworfen)
+            log.info("KI-Tags: %d unbekannte, übergeordnete oder gesperrte Tag-Namen verworfen.", verworfen)
         if zu_wenig_cyber:
             grund = "kein Tag" if self.min_cyber == 1 else f"weniger als {self.min_cyber} Tags"
             log.info("KI-Tags: %d Artikel aussortiert – %s aus „%s“.", zu_wenig_cyber, grund, " > ".join(CYBER_AST))

@@ -271,14 +271,17 @@ Regeln für die Tags (Prompt in `bot/ki_tags.py`):
 - **Beleg zu jedem Tag:** Die KI gibt zu jedem Tag an, warum er passt – ein kurzes Zitat aus Titel oder
   Vorschau oder eine knappe Begründung. Zu sehen in der Pfad-Karte (gedrückt halten bzw. Rechtsklick
   auf den Tag) unter „Warum dieser Tag?“ und am PC beim Darüberfahren mit der Maus.
-- **Pflicht für jeden Artikel:** `[S]1 Cyber` (Struktur; zusätzlich `[S]2 KriMiSi` bei Krisen-,
-  Militär- und Sicherheitsthemen, `[S]3 InnoTech` bei Innovation und Forschung), ein Tag aus *Newsinfo > Dokumententyp*
+- **Pflicht für jeden Artikel:** `[S]1 Cyber` (der einzige Struktur-Tag), ein Tag aus *Newsinfo > Dokumententyp*
   (meist „News“), aus *zeitlicher Aspekt* (z. B. „2026-2030“), aus *geographische Lokationen* (jedes
   betroffene Land einzeln; weltweit „Global“, im All „Weltraum“, ohne Ortsbezug „kein Standort“) und aus *Quellentyp* (meist „Nachrichtenseite“). Bei allem
   mit **Künstlicher Intelligenz** zusätzlich ein Tag aus *Auftragstags > HSC > HSC-KI*.
 - Vergisst die KI einen Pflicht-Ast, ergänzt der Bot den naheliegenden Tag selbst („[S]1 Cyber“,
   „News“, den aktuellen Zeitraum, „kein Standort“, „Nachrichtenseite“, bei KI „[KI_]Tools und
   Usecases“).
+- **Nie vergeben** werden: alles unter *Auftragstags* außer *Auftragstags > HSC > HSC-KI > [KI_]…*, alles
+  unter *Social Media Post*, „State of the Art“ und die Struktur-Tags außer `[S]1 Cyber` (also kein
+  `[S]2 KriMiSi`, kein `[S]3 InnoTech`). Die KI bekommt sie gar nicht erst zu sehen, und nennt sie einen
+  trotzdem, verwirft ihn der Bot. Festgelegt in `ki_tags.py` (`GESPERRT`, `TROTZDEM_ERLAUBT`).
 - Inhaltliche Tags stehen vorne, die Einordnung (Struktur, Newsinfo, Auftragstags) dahinter. Auf der
   Artikelkarte stehen die ersten 6, alle unter „Details“.
 - Ein Land passt nur, wenn der Artikel von dort handelt – nicht, weil das Medium von dort ist. Texte
@@ -347,7 +350,10 @@ Der Bot probiert pro Quelle der Reihe nach, bis etwas klappt:
    Beim allerersten Mal meldet er nur die obersten 10, alles andere merkt er sich als bekannt.
 
 Bei 2–4 holt er Titel, Zusammenfassung, Autor und Datum aus den öffentlichen Angaben der Artikelseite
-(die Daten für Suchmaschinen und soziale Netzwerke) – Paywalls umgeht er nicht. Höchstens
+(die Daten für Suchmaschinen und soziale Netzwerke) – Paywalls umgeht er nicht. Verrät eine Seite das
+Datum dort nicht (z. B. Infopoint Security), liest er es aus dem sichtbaren Text nahe der Überschrift.
+Steht dort nur der Tag, nimmt er als Uhrzeit die, zu der er den Artikel gefunden hat (auf der Webseite
+markiert mit „Uhrzeit ≈“); steht gar kein Datum dort, den Fundzeitpunkt („Fundzeit“). Höchstens
 20 Artikelseiten pro Quelle und Prüfung; der Rest kommt bei der nächsten Prüfung. Ohne Feed schaut
 er einmal am Tag nach, ob es inzwischen einen gibt. In der Quellen-Tabelle steht bei jeder Quelle,
 welcher Weg genutzt wird, in den Artikel-Details „über Sitemap“ bzw. „über Startseite“.
@@ -368,6 +374,10 @@ Seite. Gibt es für das Ressort einen eigenen Feed, trag besser den ein.
   `state.vorher.json`. Beim nächsten Start übernimmt die Seite automatisch den neuen Stand; nicht
   angeschaute Artikel der letzten 24 Stunden (bzw. des Höchstalters) kommen dann neu getaggt wieder.
   `vapid_privat.pem` **nie** löschen (siehe unten).
+
+- **Fehlende Daten nachtragen:** Bot beenden, dann im Ordner `bot`: `python news_bot.py --fix-dates`.
+  Er ruft für alle gespeicherten Artikel ohne Datum (auch abgehakte) die Seite noch einmal ab und trägt
+  Datum und Uhrzeit nach – nach denselben Regeln wie oben. Die Webseite übernimmt es beim nächsten Start.
 
 - **Aufwachen dauert:** War der PC aus, schläft die Seite; der erste Aufruf dauert dann etwa eine
   Minute. Benachrichtigungen sind davon nicht betroffen.

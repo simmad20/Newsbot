@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 import re
 import zlib
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from email.utils import parsedate_to_datetime
 from html import unescape
 from html.parser import HTMLParser
@@ -43,6 +43,24 @@ KEINE_ARTIKEL = {"tag", "tags", "thema", "themen", "topic", "topics", "kategorie
                  "wetter", "horoskop", "kreuzwortraetsel", "spiele", "games"}
 DATEI_ENDUNGEN = re.compile(r"\.(jpe?g|png|gif|svg|webp|avif|ico|pdf|css|js|json|xml|gz|zip|mp3|mp4|webm)$", re.I)
 ZWEITE_EBENEN = {"co", "or", "gv", "ac", "com", "org", "net", "gov", "edu"}
+# Sichtbares Datum (Notlösung, wenn die Seite es Suchmaschinen nicht verrät): wo gesucht wird, relativ zur Überschrift
+VOR_UEBERSCHRIFT, NACH_UEBERSCHRIFT = 400, 1500
+UNSICHTBAR = {"script", "style", "noscript", "template", "svg", "nav", "footer", "aside", "form", "select", "button"}
+MONATE = {"januar": 1, "jänner": 1, "jaenner": 1, "jan": 1, "january": 1, "februar": 2, "feber": 2, "feb": 2,
+          "february": 2, "märz": 3, "maerz": 3, "mär": 3, "mrz": 3, "march": 3, "mar": 3, "april": 4, "apr": 4,
+          "mai": 5, "may": 5, "juni": 6, "jun": 6, "june": 6, "juli": 7, "jul": 7, "july": 7, "august": 8, "aug": 8,
+          "september": 9, "sept": 9, "sep": 9, "oktober": 10, "okt": 10, "october": 10, "oct": 10, "november": 11,
+          "nov": 11, "dezember": 12, "dez": 12, "december": 12, "dec": 12}
+_MONAT = "|".join(sorted(MONATE, key=len, reverse=True))
+DATUMS_MUSTER = [  # (Regex, Reihenfolge der Gruppen: t = Tag, m = Monat, j = Jahr)
+    (re.compile(r"(?<![\d.])(\d{1,2})\.\s?(\d{1,2})\.\s?(\d{4})(?!\d)"), "tmj"),            # 14.10.2026
+    (re.compile(r"(?<![\d-])(\d{4})-(\d{2})-(\d{2})(?![\d-])"), "jmt"),                          # 2026-10-14
+    (re.compile(rf"(?<!\d)(\d{{1,2}})\.?\s+({_MONAT})\.?\s+(\d{{4}})(?!\d)", re.I), "tmj"),     # 14. Oktober 2026
+    (re.compile(rf"\b({_MONAT})\.?\s+(\d{{1,2}})(?:st|nd|rd|th)?,?\s+(\d{{4}})(?!\d)", re.I), "mtj"),  # October 14, 2026
+]
+ZEIT_DANACH = re.compile(r"^[\s,|/·•–—-]*(?:um|at)?\s*(\d{1,2})(?::(\d{2})|\.(\d{2})(?=\s*Uhr))\s*(Uhr|h\b|am\b|pm\b)?", re.I)
+ZEIT_DAVOR = re.compile(r"(\d{1,2}):(\d{2})\s*(?:Uhr|h)?\s*[,|/·•–—-]?\s*$", re.I)
+URL_DATUM = re.compile(r"/(20\d{2})/(\d{1,2})/(\d{1,2})/")
 
 
 class SeitenFehler(Exception):
@@ -260,8 +278,12 @@ def lies_artikelseite(html: str, url: str) -> dict:
 
     veroeffentlicht = (lies_datum(ld.get("datePublished")) or lies_datum(m.get("article:published_time"))
                        or lies_datum(m.get("og:article:published_time")) or lies_datum(m.get("date"))
-                       or lies_datum(m.get("pubdate")) or lies_datum(m.get("publishdate")) or lies_datum(m.get("dc.date")))
+                       or lies_datum(m.get("pubdate")) or lies_datum(m.get("publishdate")) or lies_datum(m.get("dc.date"))
+                       or lies_datum(m.get("datepublished")))
     geaendert = lies_datum(ld.get("dateModified")) or lies_datum(m.get("article:modified_time"))
+    # Nennt die Seite das Datum nur sichtbar im Text (z. B. Infopoint Security), dieses nehmen – es ist das
+    # Veröffentlichungsdatum und damit besser als ein reines Änderungsdatum
+    sichtbar = None if veroeffentlicht else sichtbares_datum(html, url)
     canonical = urljoin(url, leser.canonical) if leser.canonical else ""
     return {
         "titel": _text(_erster(ld.get("headline"), ld.get("name"), m.get("og:title"), m.get("twitter:title"),
@@ -269,12 +291,145 @@ def lies_artikelseite(html: str, url: str) -> dict:
         "teaser": _text(_erster(ld.get("description"), m.get("og:description"), m.get("description"),
                                 m.get("twitter:description")), 1000),
         "autor": _text(_namen(ld.get("author")) or m.get("author") or m.get("article:author"), 150),
-        "datum": veroeffentlicht or geaendert,
-        "datum_art": "veröffentlicht" if veroeffentlicht else "aktualisiert" if geaendert else "unbekannt",
+        "datum": veroeffentlicht or (None if sichtbar else geaendert),
+        "datum_art": "veröffentlicht" if veroeffentlicht else "aktualisiert" if geaendert and not sichtbar else "unbekannt",
+        # Ortszeit der Seite (ohne Zeitzone, außer <time> nennt eine) – news_bot rechnet sie um; nur_tag: keine Uhrzeit
+        "datum_lokal": sichtbar[0] if sichtbar else None,
+        "nur_tag": bool(sichtbar and sichtbar[1]),
         "medium": _text(_namen(ld.get("publisher")) or m.get("og:site_name"), 150),
         "canonical": canonical if canonical.startswith(("http://", "https://")) else "",
         "ist_artikel": bool(ld) or m.get("og:type", "").lower() == "article" or "article:published_time" in m,
     }
+
+
+# --------------------------------------------------------------------------- Sichtbares Datum (Notlösung)
+
+class _TextLeser(HTMLParser):
+    """Sichtbarer Text der Seite, Lage der ersten Überschrift <h1> darin und <time datetime="…">-Angaben."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.teile: list[str] = []
+        self.laenge = 0
+        self.h1: tuple[int, int] | None = None
+        self.zeiten: list[tuple[int, str, bool]] = []  # (Stelle, datetime-Wert, als Veröffentlichung markiert)
+        self._unsichtbar = 0
+        self._h1_start: int | None = None
+
+    def handle_starttag(self, tag, attrs):
+        if tag in UNSICHTBAR:
+            self._unsichtbar += 1
+            return
+        a = {k.lower(): (v or "") for k, v in attrs}
+        wert = a.get("datetime") or (a.get("content") if a.get("itemprop", "").lower() == "datepublished" else "")
+        if wert and len(self.zeiten) < 200 and not self._unsichtbar:
+            markiert = a.get("itemprop", "").lower() == "datepublished" or bool(
+                re.search(r"publish|entry-date|post-date|veroeffentlicht|article-date", a.get("class", ""), re.I))
+            self.zeiten.append((self.laenge, wert[:60], markiert))
+        if tag == "h1" and self.h1 is None and self._h1_start is None:
+            self._h1_start = self.laenge
+        if tag in ("p", "div", "br", "li", "td", "h1", "h2", "h3", "span", "time"):
+            self._dazu(" ")
+
+    def handle_endtag(self, tag):
+        if tag in UNSICHTBAR:
+            self._unsichtbar = max(0, self._unsichtbar - 1)
+        elif tag == "h1" and self._h1_start is not None and self.h1 is None:
+            self.h1 = (self._h1_start, self.laenge)
+        if tag in ("p", "div", "li", "td", "h1", "h2", "h3", "span", "time"):
+            self._dazu(" ")
+
+    def handle_data(self, data):
+        if not self._unsichtbar:
+            self._dazu(data)
+
+    def _dazu(self, text: str) -> None:
+        if self.laenge < MAX_HTML_ZEICHEN:
+            self.teile.append(text)
+            self.laenge += len(text)
+
+
+def _gueltig(j: int, m: int, t: int, std: int = 0, minute: int = 0) -> datetime | None:
+    try:
+        return datetime(j, m, t, std, minute) if 1990 <= j <= 2100 else None
+    except ValueError:
+        return None
+
+
+def _zeit(text: str, start: int, ende: int) -> tuple[int, int] | None:
+    """Uhrzeit direkt hinter (oder vor) dem Datum: „14.10.2026, 10:15 Uhr“, „um 9.30 Uhr“, „10:15 | 14.10.2026“."""
+    if m := ZEIT_DANACH.match(text[ende:ende + 30]):
+        std, minute = int(m.group(1)), int(m.group(2) or m.group(3))
+        zusatz = (m.group(4) or "").lower()
+        if zusatz == "pm" and std < 12:
+            std += 12
+        elif zusatz == "am" and std == 12:
+            std = 0
+        if std < 24 and minute < 60:
+            return std, minute
+    if m := ZEIT_DAVOR.search(text[max(0, start - 25):start]):
+        std, minute = int(m.group(1)), int(m.group(2))
+        if std < 24 and minute < 60:
+            return std, minute
+    return None
+
+
+def sichtbares_datum(html: str, url: str = "") -> tuple[datetime, bool] | None:
+    """Veröffentlichungsdatum, das nur im sichtbaren Text steht – meist in Ortszeit ohne Zeitzone, dazu True, wenn nur der
+    Tag bekannt ist (keine Uhrzeit). Gesucht wird nahe der Hauptüberschrift, damit nicht das Datum eines anderen
+    Artikels aus der Seitenleiste oder ein Termin im Text erwischt wird. Notfalls aus der Adresse (/2026/10/14/)."""
+    leser = _TextLeser()
+    try:
+        leser.feed(html[:MAX_HTML_ZEICHEN])
+        leser.close()
+    except (AssertionError, ValueError):
+        pass
+    text = "".join(leser.teile)
+    if leser.h1:
+        anfang, ende = leser.h1
+        von, bis = max(0, anfang - VOR_UEBERSCHRIFT), ende + NACH_UEBERSCHRIFT
+
+        def abstand(stelle_von: int, stelle_bis: int) -> tuple[bool, int]:
+            """Was hinter der Überschrift steht, kommt zuerst (davor steht oft das heutige Datum im Seitenkopf)."""
+            return (True, anfang - stelle_bis) if stelle_bis <= anfang else (False, max(0, stelle_von - ende))
+
+        # 1. <time datetime="…"> nahe der Überschrift (als Veröffentlichung markierte zuerst)
+        zeiten = sorted((not markiert, abstand(stelle, stelle), wert) for stelle, wert, markiert in leser.zeiten
+                        if von <= stelle <= bis or markiert)
+        for _, _, wert in zeiten:
+            if ergebnis := _datum_aus_attribut(wert):
+                return ergebnis
+        # 2. Datum im Text – das der Überschrift nächste
+        treffer = []
+        for muster, reihenfolge in DATUMS_MUSTER:
+            for m in muster.finditer(text, von, min(len(text), bis)):
+                werte = dict(zip(reihenfolge, m.groups()))
+                monat = int(werte["m"]) if werte["m"].isdigit() else MONATE.get(werte["m"].lower().rstrip("."))
+                if monat and (tag := _gueltig(int(werte["j"]), monat, int(werte["t"]))):
+                    treffer.append((abstand(m.start(), m.end()), m.start(), m.end(), tag))
+        if treffer:
+            _, start, ende_treffer, tag = min(treffer, key=lambda x: (x[0], x[1]))
+            if uhr := _zeit(text, start, ende_treffer):
+                return tag.replace(hour=uhr[0], minute=uhr[1]), False
+            return tag, True
+    # 3. Datum in der Adresse
+    if m := URL_DATUM.search(urlparse(url).path):
+        if tag := _gueltig(int(m.group(1)), int(m.group(2)), int(m.group(3))):
+            return tag, True
+    return None
+
+
+def _datum_aus_attribut(wert: str) -> tuple[datetime, bool] | None:
+    """datetime-Wert eines <time>-Elements: nur Tag („2026-10-14“), Ortszeit oder mit Zeitzone."""
+    wert = wert.strip()
+    try:
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", wert):
+            tag = date.fromisoformat(wert)
+            return (datetime(tag.year, tag.month, tag.day), True) if 1990 <= tag.year <= 2100 else None
+        d = datetime.fromisoformat(wert.replace("Z", "+00:00"))  # mit Zeitzone bleibt sie dran, sonst Ortszeit
+    except (ValueError, OverflowError):
+        return None
+    return (d, False) if 1990 <= d.year <= 2100 else None
 
 
 # --------------------------------------------------------------------------- Startseite (Notlösung)

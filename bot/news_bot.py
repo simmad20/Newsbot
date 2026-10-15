@@ -12,6 +12,7 @@ Aufruf:
     python news_bot.py --test     # ein Durchlauf, nur Ausgabe in der Konsole, nichts senden/speichern
     python news_bot.py --prompt   # den kompletten Prompt an die KI in prompt-vorschau.txt schreiben
     python news_bot.py --zuruecksetzen  # nicht angeschaute Artikel vergessen (Abgehakte, Quellen, Tags, Geräte bleiben)
+    python news_bot.py --fix-dates      # fehlende Datumsangaben gespeicherter Artikel von deren Seite nachtragen
 """
 from __future__ import annotations
 
@@ -464,16 +465,41 @@ def finde_weg(quelle: str) -> dict:
     return {"art": "startseite", "url": r.url, "gesucht": jetzt}
 
 
+def sichtbares_datum(info: dict, tz: ZoneInfo, gefunden: datetime) -> tuple[datetime | None, str]:
+    """Datum, das nur im Text der Artikelseite steht (seiten.sichtbares_datum), in UTC – samt datum_art.
+    Steht dort keine Uhrzeit, gilt die Uhrzeit, zu der der Bot den Artikel gefunden hat („nur Datum“)."""
+    lokal = info.get("datum_lokal")
+    if not isinstance(lokal, datetime):
+        return None, "unbekannt"
+    art = "veröffentlicht"
+    if info.get("nur_tag"):
+        uhr = gefunden.astimezone(tz)
+        lokal = datetime.combine(lokal.date(), uhr.time().replace(microsecond=0))
+        art = "nur Datum"
+    datum = (lokal if lokal.tzinfo else lokal.replace(tzinfo=tz)).astimezone(timezone.utc)
+    if datum > gefunden + timedelta(days=1):
+        return None, "unbekannt"  # Datum in der Zukunft – eher ein Termin im Text als die Veröffentlichung
+    return min(datum, gefunden), art
+
+
 def seitenartikel(norm: str, eintrag: dict, info: dict | None, weg: dict, jetzt: datetime,
-                  grenze: timedelta, ohne_datum_ok: bool) -> dict | None:
+                  grenze: timedelta, ohne_datum_ok: bool, tz: ZoneInfo) -> dict | None:
     """Aus Sitemap-Eintrag und Angaben der Artikelseite einen Artikel wie aus einem Feed machen."""
     info = info or {}
     titel = info.get("titel") or eintrag.get("titel")
     if not titel or (weg["art"] == "startseite" and not info.get("ist_artikel")):
         return None  # Startseite: nur Seiten, die sich selbst als Artikel ausweisen
-    datum = info.get("datum") or eintrag.get("datum")
-    if datum is None and not ohne_datum_ok:
-        return None
+    datum, datum_art = info.get("datum"), info.get("datum_art")
+    if datum is None:
+        datum, datum_art = sichtbares_datum(info, tz, jetzt)
+        if datum is not None and jetzt - datum > grenze:  # aus dem Text geraten – lieber nicht deshalb verwerfen
+            datum, datum_art = None, "unbekannt"
+    if datum is None and eintrag.get("datum"):
+        datum, datum_art = eintrag["datum"], "veröffentlicht" if eintrag.get("news") else "aktualisiert"
+    if datum is None:
+        if not ohne_datum_ok:
+            return None
+        datum, datum_art = jetzt, "Fundzeit"  # gar kein Datum zu finden → wann der Bot ihn gefunden hat
     if datum is not None and (jetzt - datum > grenze or datum > jetzt + timedelta(days=1)):
         return None
     schluessel = [norm]
@@ -488,15 +514,15 @@ def seitenartikel(norm: str, eintrag: dict, info: dict | None, weg: dict, jetzt:
         "autor": info.get("autor", ""),
         "medium": info.get("medium") or (urlparse(norm).hostname or "").removeprefix("www."),
         "datum": datum,
-        # Datum der Artikelseite > News-Sitemap (Veröffentlichung) > normale Sitemap (nur Änderungsdatum)
-        "datum_art": "unbekannt" if datum is None else info.get("datum_art") if info.get("datum")
-        else "veröffentlicht" if eintrag.get("news") else "aktualisiert",
+        # Datum der Artikelseite > sichtbares Datum im Text > News-Sitemap (Veröffentlichung) > normale Sitemap
+        # (nur Änderungsdatum) > Fundzeit
+        "datum_art": datum_art,
         "weg": weg["art"],
     }
 
 
 def artikel_von_seiten(kandidaten: list[tuple[str, dict]], state: dict, weg: dict, jetzt: datetime,
-                       grenze: timedelta, ohne_datum_ok: bool) -> list[dict]:
+                       grenze: timedelta, ohne_datum_ok: bool, tz: ZoneInfo) -> list[dict]:
     """Holt die Angaben neuer Artikelseiten (höchstens MAX_SEITENABRUFE). Was nicht gemeldet wird,
     kommt in "bekannt", damit der Bot die Seite nicht bei jeder Prüfung erneut abruft."""
     neue, abrufe = [], 0
@@ -519,7 +545,7 @@ def artikel_von_seiten(kandidaten: list[tuple[str, dict]], state: dict, weg: dic
         except Exception:  # fremde Seite mit unerwartetem Inhalt – nur diese Seite überspringen
             log.exception("Artikelseite %s nicht auswertbar – übersprungen", eintrag["url"])
         try:
-            artikel = seitenartikel(norm, eintrag, info, weg, jetzt, grenze, ohne_datum_ok)
+            artikel = seitenartikel(norm, eintrag, info, weg, jetzt, grenze, ohne_datum_ok, tz)
         except Exception:
             log.exception("Artikel %s nicht auswertbar – übersprungen", eintrag["url"])
             artikel = None
@@ -530,7 +556,7 @@ def artikel_von_seiten(kandidaten: list[tuple[str, dict]], state: dict, weg: dic
     return neue
 
 
-def lies_quelle(weg: dict, state: dict, jetzt: datetime, grenze: timedelta) -> list[dict]:
+def lies_quelle(weg: dict, state: dict, jetzt: datetime, grenze: timedelta, tz: ZoneInfo) -> list[dict]:
     if weg["art"] == "feed":
         return [{**a, "weg": "feed"} for a in lese_artikel(hole(weg["url"]).content, weg["url"], jetzt, grenze)]
     host = urlparse(weg["url"]).hostname or ""
@@ -542,7 +568,7 @@ def lies_quelle(weg: dict, state: dict, jetzt: datetime, grenze: timedelta) -> l
             if url and e["datum"] and timedelta(days=-1) <= jetzt - e["datum"] <= grenze:
                 kandidaten.append((normalisiere_url(url), {**e, "url": url}))
         kandidaten.sort(key=lambda k: k[1]["datum"], reverse=True)  # neueste zuerst
-        return artikel_von_seiten(list(dict(kandidaten).items()), state, weg, jetzt, grenze, ohne_datum_ok=False)
+        return artikel_von_seiten(list(dict(kandidaten).items()), state, weg, jetzt, grenze, ohne_datum_ok=False, tz=tz)
 
     # Startseite: neue Links erkennen. Beim allerersten Mal nur die obersten ansehen, den Rest nur merken –
     # sonst kämen auf einen Schlag alle Artikel der Startseite als „neu“.
@@ -562,7 +588,7 @@ def lies_quelle(weg: dict, state: dict, jetzt: datetime, grenze: timedelta) -> l
         for norm, _ in kandidaten[MAX_ERSTABRUFE_STARTSEITE:]:
             state["bekannt"].setdefault(norm, jetzt.isoformat())
         kandidaten = kandidaten[:MAX_ERSTABRUFE_STARTSEITE]
-    return artikel_von_seiten(kandidaten, state, weg, jetzt, grenze, ohne_datum_ok=not erstes_mal)
+    return artikel_von_seiten(kandidaten, state, weg, jetzt, grenze, ohne_datum_ok=not erstes_mal, tz=tz)
 
 
 def weg_fuer(quelle: str, state: dict) -> dict:
@@ -678,8 +704,8 @@ def baue_meldung(a: dict, tz: ZoneInfo) -> dict:
         zeit = "⚠️ unbekannt (bitte prüfen)"
     else:
         zeit = a["datum"].astimezone(tz).strftime("%d.%m.%Y, %H:%M Uhr")
-        if a["datum_art"] == "aktualisiert":
-            zeit += " (nur Aktualisierungsdatum bekannt)"
+        zeit += {"aktualisiert": " (nur Aktualisierungsdatum bekannt)", "nur Datum": " (Uhrzeit: vom Bot gefunden)",
+                 "Fundzeit": " (vom Bot gefunden – die Seite nennt kein Datum)"}.get(a["datum_art"], "")
     tags = " ".join(f"`{t}`" for t in a["tags"]) or "–"
     beschreibung = a["teaser"] or "_Kein Vorschautext im Feed – bitte Artikel öffnen._"
     felder = [
@@ -888,7 +914,7 @@ def durchlauf(cfg: dict, state: dict, test: bool = False) -> str:
         try:
             weg = weg_fuer(quelle, state)
             state["feeds"][quelle] = weg
-            artikel = lies_quelle(weg, state, jetzt, grenze_alter)
+            artikel = lies_quelle(weg, state, jetzt, grenze_alter, tz)
         except AbrufFehler as e:
             state["feeds"].pop(quelle, None)  # beim nächsten Mal Weg neu suchen
             melde_fehler(cfg, state, quelle, str(e), test)
@@ -1308,6 +1334,53 @@ def zuruecksetzen() -> None:
              len(alt["verlauf"]) - len(neu["verlauf"]), len(neu["verlauf"]), len(alt["push_abos"]))
 
 
+def datum_nachtragen(cfg: dict) -> None:
+    """Für alle gespeicherten Artikel ohne Datum (auch abgehakte) die Artikelseite noch einmal abrufen und das Datum
+    nachtragen – so wie es neue Artikel jetzt bekommen. Steht dort keine Uhrzeit, gilt die Uhrzeit, zu der der Bot
+    den Artikel gefunden hat; steht gar nichts dort, der Fundzeitpunkt. Die Webseite bekommt die Änderung beim
+    nächsten Start des Bots."""
+    if not hole_lock():
+        sys.exit("Der Bot läuft gerade – erst beenden (pkill -f news_bot.py), dann --fix-dates.")
+    tz = ZoneInfo(cfg["zeitzone"])
+    state = lade_state()
+    offen = [e for e in state["verlauf"] if not e.get("datum") or e.get("datum_art") in ("unbekannt", "Fundzeit")]
+    if not offen:
+        log.info("Alle %d gespeicherten Artikel haben ein Datum – nichts zu tun.", len(state["verlauf"]))
+        return
+    log.info("%d Artikel ohne Datum – rufe ihre Seiten ab (ca. %d s) …", len(offen), len(offen) * PAUSE_ZWISCHEN_ABRUFEN)
+    zaehler = {"veröffentlicht": 0, "nur Datum": 0, "Fundzeit": 0}
+    for nr, e in enumerate(offen, 1):
+        try:
+            gefunden = datetime.fromisoformat(e["gefunden_um"])
+        except (KeyError, TypeError, ValueError):
+            gefunden = jetzt_utc()
+        datum, art = None, "unbekannt"
+        try:
+            r = hole(e["url"])
+            if "html" in r.headers.get("content-type", "").lower():
+                info = seiten.lies_artikelseite(r.text, r.url)
+                datum, art = info.get("datum"), info.get("datum_art")
+                if datum is None:
+                    datum, art = sichtbares_datum(info, tz, gefunden)
+        except AbrufFehler as fehler:
+            log.info("  %s", fehler)
+        except Exception:
+            log.exception("  %s nicht auswertbar", e["url"])
+        if datum is None or art == "aktualisiert":
+            # Ein reines Änderungsdatum kann viel später liegen – dann lieber der Fundzeitpunkt
+            datum, art = gefunden, "Fundzeit"
+        e["datum"], e["datum_art"] = datum.isoformat(), art
+        zaehler[art if art in zaehler else "veröffentlicht"] += 1
+        log.info("  [%d/%d] %s → %s (%s)", nr, len(offen), e["titel"][:60],
+                 datum.astimezone(tz).strftime("%d.%m.%Y %H:%M"), art)
+        # Zur Webseite: der Eintrag ersetzt dort den alten mit derselben Adresse
+        state["sync_artikel"] = ([x for x in state["sync_artikel"] if x["url"] != e["url"]] + [e])[-500:]
+        speichere_state(state)  # nach jedem Artikel – ein Abbruch verliert nichts
+    log.info("Fertig: %d mit Datum und Uhrzeit von der Seite, %d mit Datum von der Seite und Uhrzeit vom Fund, "
+             "%d nur mit dem Fundzeitpunkt (Seite nicht erreichbar oder ohne Datum). Die Webseite übernimmt das "
+             "beim nächsten Start des Bots.", zaehler["veröffentlicht"], zaehler["nur Datum"], zaehler["Fundzeit"])
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Kleiner News-Bot mit eigener Webseite")
     gruppe = parser.add_mutually_exclusive_group()
@@ -1318,12 +1391,18 @@ def main() -> None:
     gruppe.add_argument("--zuruecksetzen", action="store_true",
                         help="nicht angeschaute Artikel und Fehler vergessen – abgehakte Artikel, Quellen, Tags, Geräte "
                              "und Einstellungen bleiben")
+    gruppe.add_argument("--fix-dates", action="store_true",
+                        help="fehlende Datumsangaben gespeicherter Artikel (auch abgehakter) von der Artikelseite "
+                             "nachtragen")
     args = parser.parse_args()
     richte_logging_ein()
     if args.zuruecksetzen:
         zuruecksetzen()
         return
     cfg = lade_config()
+    if args.fix_dates:
+        datum_nachtragen(cfg)
+        return
     listen.richte_ein(QUELLEN_DATEI, TAGS_DATEI, cfg.get("tags"))
     llm = ki_tags.einstellungen(cfg)
     log.info("Tags vergibt %s.", f"{ki_tags.NAMEN[llm['anbieter']]} ({llm['modell']})" if llm["api_key"]

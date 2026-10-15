@@ -415,6 +415,13 @@ function detailFeld(name, ...wert) {
   return [el("dt", {}, name), el("dd", {}, ...wert)];
 }
 
+// datum_art → [Marke auf der Karte, Erklärung]
+const DATUM_HINWEIS = {
+  aktualisiert: ["aktualisiert", "Der Feed nennt nur das Aktualisierungsdatum"],
+  "nur Datum": ["Uhrzeit ≈", "Die Seite nennt nur den Tag – die Uhrzeit ist die, zu der der Bot den Artikel gefunden hat"],
+  Fundzeit: ["Fundzeit", "Die Seite nennt kein Datum – angezeigt wird, wann der Bot den Artikel gefunden hat"],
+};
+
 function artikelKarte(a, kompakt) {
   const d = a.datum ? new Date(a.datum) : null;
   const datumOk = d && !isNaN(d);
@@ -431,7 +438,7 @@ function artikelKarte(a, kompakt) {
     kompakt ? null : el("span", { class: "medium-marke" }, el("span", { class: "farb-punkt", "aria-hidden": "true" }), a.medium),
     istNeu(a) ? el("span", { class: "neu-marke" }, "neu") : null,
     a.gemeldet ? el("span", { class: "gemeldet-marke", title: "Benachrichtigung wurde gesendet" }, "gemeldet") : null,
-    datumOk && a.datum_art === "aktualisiert" ? el("span", { class: "hinweis-marke", title: "Der Feed nennt nur das Aktualisierungsdatum" }, "aktualisiert") : null);
+    datumOk && DATUM_HINWEIS[a.datum_art] ? el("span", { class: "hinweis-marke", title: DATUM_HINWEIS[a.datum_art][1] }, DATUM_HINWEIS[a.datum_art][0]) : null);
 
   const titel = el("h3", { class: "artikel-titel" }, url
     ? el("a", { href: url, target: "_blank", rel: "noopener noreferrer" }, a.titel)
@@ -450,9 +457,10 @@ function artikelKarte(a, kompakt) {
     el("dl", { class: "details-raster" },
       ...detailFeld("Quelle", a.medium, el("span", { class: "leise" }, ` · ${hostVon(a.url)}`)),
       ...detailFeld("Autor", a.autor || el("span", { class: "leise" }, "im Feed nicht angegeben")),
-      ...detailFeld(a.datum_art === "aktualisiert" ? "Aktualisiert" : "Veröffentlicht", datumOk
-        ? `${datumLang(a.datum)} (${vorZeit(a.datum) || "gerade eben"})`
-        : el("span", { class: "warnung-text" }, "Der Feed nennt kein Datum – bitte im Artikel prüfen")),
+      ...detailFeld(a.datum_art === "aktualisiert" ? "Aktualisiert" : "Veröffentlicht", ...(datumOk
+        ? [`${datumLang(a.datum)} (${vorZeit(a.datum) || "gerade eben"})`,
+          DATUM_HINWEIS[a.datum_art] ? el("span", { class: "leise" }, ` · ${DATUM_HINWEIS[a.datum_art][1]}`) : null]
+        : [el("span", { class: "warnung-text" }, "Der Feed nennt kein Datum – bitte im Artikel prüfen")])),
       ...detailFeld("Gefunden", datumLang(a.gefunden_um) || "–",
         a.weg && a.weg !== "feed" ? el("span", { class: "leise" }, ` · über ${WEG_TEXT[a.weg] || a.weg}`) : null),
       ...detailFeld("Benachrichtigung", benachrichtigung),
