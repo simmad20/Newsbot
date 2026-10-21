@@ -3,7 +3,7 @@
 Ein kleiner Nachrichten-Bot für den Eigengebrauch – ohne Discord, die Tags vergibt eine KI (DeepSeek oder Claude).
 
 ```
-   Dein PC                                   Render (kostenlos)
+   Dein PC oder Handy                        Render (kostenlos)
  ┌──────────────────────┐   alle 30 s     ┌──────────────────────────┐
  │ bot/news_bot.py      │ ──────────────► │ web/server.py            │ ◄── du im Browser
  │ • quellen.csv,       │  Status, neue   │ • Seite mit Login        │     (PC oder Handy)
@@ -105,6 +105,53 @@ C:\NewsBot\bot\.venv\Scripts\pythonw.exe C:\NewsBot\bot\news_bot.py
 ```
 `pythonw` läuft ohne Fenster. Ob er läuft, siehst du auf der Seite oder in `bot/newsbot.log`.
 Vorher ein offenes Konsolenfenster mit dem Bot schließen – zweimal gleichzeitig startet er nicht.
+
+## Bot auf dem Handy (Android mit Termux)
+
+Statt am PC kann der Bot auch auf einem Android-Handy laufen – mit [Termux](https://termux.dev)
+(aus **F-Droid** installieren, die Version im Play Store ist veraltet).
+
+Einmalig einrichten:
+```
+pkg update
+pkg install python git python-cryptography
+git clone https://github.com/simmad20/Newsbot ~/Newsbot
+cd ~/Newsbot/bot
+pip install feedparser requests urllib3 tzdata defusedxml
+cp config.beispiel.toml config.toml
+nano config.toml
+```
+In `config.toml` Webseite, Bot-Token und KI-Schlüssel eintragen (wie in Teil 1). `cryptography` kommt
+in Termux über `pkg` (`python-cryptography`), nicht über `pip` – deshalb ohne venv.
+
+Starten:
+```
+cd ~/Newsbot/bot
+termux-wake-lock
+while true; do python news_bot.py; echo "Neustart in 30 s"; sleep 30; done
+```
+`termux-wake-lock` hält das Handy bei gesperrtem Bildschirm wach (in der Termux-Benachrichtigung
+steht dann „wake lock held“). Die Schleife startet den Bot neu, falls er abstürzt. Beenden: zweimal
+Strg+C. Aktualisieren: Bot beenden, dann `cd ~/Newsbot && git pull`, danach wieder starten.
+
+Damit Android Termux nicht beendet:
+- Einstellungen → Apps → Termux → Akku → **„Nicht eingeschränkt“** (Samsung zusätzlich: Termux
+  nicht unter „Apps im Standby/Tiefschlaf“; Xiaomi: „Autostart“ erlauben).
+- Energiesparmodus aus, Ladekabel dran, Termux in den letzten Apps nicht wegwischen.
+
+> **Empfehlung: Das Gerät nicht sperren lassen – egal ob PC oder Handy.**
+> Sperrt sich der PC oder das Handy, läuft der Bot zwar meist weiter, ist aber deutlich
+> anfälliger für Fehler: Sehr wahrscheinlich ist er dann von der Webseite aus **nicht mehr
+> erreichbar** („Keine Verbindung“, Befehle bleiben liegen) – erst wenn er die nächste Prüfung
+> startet, meldet er sich wieder, und dann oft nur für etwa 5–10 Minuten. Deshalb während der Bot
+> laufen soll: Bildschirmsperre bzw. Ruhezustand ausschalten oder lang stellen (Windows:
+> Einstellungen → System → Netzbetrieb und Akku → Bildschirm und Energiesparmodus → „Nie“; Handy:
+> Einstellungen → Display → Bildschirm-Timeout auf das Maximum, Ladekabel dran). Und vorher
+> kurz testen: Bot starten, Gerät liegen lassen und auf einem anderen Gerät auf der Webseite
+> prüfen, ob „Läuft“ und die Zeit der letzten Prüfung aktuell bleiben.
+
+Nie zwei Bots gleichzeitig laufen lassen (PC, Handy, GitHub Actions) – sonst kommen Meldungen doppelt.
+Beim Umziehen `config.toml`, `state.json`, `quellen.csv`, `tags.csv` und `vapid_privat.pem` mitnehmen.
 
 ## Bot ohne PC (GitHub Actions)
 
