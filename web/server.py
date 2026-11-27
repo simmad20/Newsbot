@@ -313,7 +313,7 @@ class BefehlIn(BaseModel):
 # --------------------------------------------------------------------------- Speicher (nur im RAM)
 
 class Speicher:
-    MAX_ARTIKEL = 4000      # Bot: höchstens 3000 insgesamt, davon höchstens 300 nicht abgehakte
+    MAX_ARTIKEL = 1400      # Bot: höchstens 1250 insgesamt, davon höchstens 300 nicht abgehakte
     MAX_OFFEN = 400         # nicht abgehakte – darüber fallen die ältesten davon weg, nie abgehakte
     MAX_FEHLER = 150
     MAX_BEFEHLE = 25
@@ -330,32 +330,56 @@ class Speicher:
         self.hat_snapshot = False
         self.push_aenderungen: list[dict] = []
         self.listen: dict | None = None  # Quellen und Tags vom Bot
-        self.artikel_stand = 0  # zählt jede Änderung an den Artikeln – die Seite lädt sie nur dann neu
+        # Änderungsprotokoll, damit die Seite nur Neues/Geändertes/Gelöschtes laden muss statt aller Artikel
+        # (spart Datenvolumen – das ist bei Render Free begrenzt). Jede Änderung bekommt eine fortlaufende Nummer.
+        self.artikel_stand = 0
+        self.geaendert: dict[str, int] = {}          # Adresse → Nummer der letzten Änderung
+        self.weg_protokoll: deque[tuple[int, str]] = deque(maxlen=2000)  # (Nummer, Adresse) gelöschter Artikel
+        self.voll_ab = 0  # ältere Stände kann die Seite nicht mehr nachholen → sie bekommt alles
+
+    def _merke(self, url: str) -> None:
+        self.artikel_stand += 1
+        self.geaendert[url] = self.artikel_stand
+
+    def _loesche(self, url: str) -> None:
+        if self.artikel.pop(url, None) is None:
+            return
+        self.artikel_stand += 1
+        self.geaendert.pop(url, None)
+        if len(self.weg_protokoll) == self.weg_protokoll.maxlen:
+            self.voll_ab = max(self.voll_ab, self.weg_protokoll[0][0])  # das fällt gleich aus dem Protokoll
+        self.weg_protokoll.append((self.artikel_stand, url))
 
     def artikel_hinzufuegen(self, liste: list[ArtikelIn]) -> None:
         for a in liste:
+            neu = a.model_dump()
+            if self.artikel.get(a.url) == neu:
+                continue  # unverändert – nichts an die Seite schicken
             self.artikel.pop(a.url, None)
-            self.artikel[a.url] = a.model_dump()
+            self.artikel[a.url] = neu
+            self._merke(a.url)
         offen = [u for u, x in self.artikel.items() if not x.get("angeschaut")]
         for url in offen[:max(0, len(offen) - self.MAX_OFFEN)]:  # abgehakte nie zugunsten neuer verdrängen
-            del self.artikel[url]
+            self._loesche(url)
         while len(self.artikel) > self.MAX_ARTIKEL:  # Notbremse
-            self.artikel.popitem(last=False)
+            self._loesche(next(iter(self.artikel)))
 
     def sync(self, daten: SyncIn) -> dict:
         with self.lock:
-            if daten.snapshot or daten.artikel or daten.entfernt:
-                self.artikel_stand += 1
             self.letzter_kontakt = time.time()
             self.status = daten.status.model_dump()
             self.beendet = self.pruefung = None  # der Bot synchronisiert nur zwischen zwei Prüfungen
             if daten.snapshot:
                 self.artikel.clear()
+                self.geaendert.clear()
+                self.weg_protokoll.clear()
+                self.artikel_stand += 1
+                self.voll_ab = self.artikel_stand
                 self.fehler.clear()
                 self.hat_snapshot = True
             self.artikel_hinzufuegen(daten.artikel)
             for url in daten.entfernt:
-                self.artikel.pop(url, None)
+                self._loesche(url)
             self.fehler.extend(f.model_dump() for f in daten.fehler)
             if daten.listen is not None:
                 self.listen = daten.listen.model_dump()
@@ -394,9 +418,8 @@ class Speicher:
             return self.angeschaut(b)
         with self.lock:
             if b.aktion == "offene_artikel_loeschen":  # gilt auf der Seite sofort; der Bot löscht sie dauerhaft
-                self.artikel_stand += 1
                 for url in [u for u, a in self.artikel.items() if not a.get("angeschaut")]:
-                    del self.artikel[url]
+                    self._loesche(url)
             # Gleiche offene Steuer-Aktion nicht doppelt einreihen – nur den Wert aktualisieren.
             # (Quellen- und Tag-Befehle haben jeweils eigenen Inhalt und bleiben alle erhalten.)
             if b.aktion not in LISTEN_AKTIONEN:
@@ -421,10 +444,10 @@ class Speicher:
         bei schlafendem Bot nicht die Befehlsliste füllen und ältere verdrängen."""
         with self.lock:
             urls = list(dict.fromkeys(b.artikel))
-            self.artikel_stand += 1
             for url in urls:
-                if url in self.artikel:
+                if url in self.artikel and self.artikel[url]["angeschaut"] != b.angeschaut:
                     self.artikel[url]["angeschaut"] = b.angeschaut
+                    self._merke(url)
             ziel = None
             for alt in self.befehle:
                 if alt["zustand"] != "offen" or alt["aktion"] != "angeschaut":
@@ -445,10 +468,16 @@ class Speicher:
             return kompakt(neu)
 
     def ansicht(self, stand: str = "") -> dict:
-        """Alles für die Seite. Kennt die Seite den aktuellen Artikel-Stand schon, kommen die Artikel nicht noch
-        einmal mit ("artikel": null) – bei vielen abgehakten Artikeln spart das alle 10 Sekunden viel Datenvolumen."""
+        """Alles für die Seite. Nennt die Seite ihren Artikel-Stand, bekommt sie nur, was sich seitdem geändert hat
+        ("artikel": null, "artikel_neu", "artikel_weg") – sonst alle Artikel. Bei vielen abgehakten Artikeln spart
+        das alle 10 Sekunden viel Datenvolumen."""
         with self.lock:
             artikel_stand = f"{SERVER_ID}-{self.artikel_stand}"
+            seit = None
+            if stand.startswith(f"{SERVER_ID}-") and stand[len(SERVER_ID) + 1:].isdigit():
+                n = int(stand[len(SERVER_ID) + 1:])
+                if self.voll_ab <= n <= self.artikel_stand:
+                    seit = n
             vor = None if self.letzter_kontakt is None else time.time() - self.letzter_kontakt
             takt = self.status["sync_sekunden"] if self.status else 30
             online = vor is not None and vor < 2 * takt + ONLINE_PUFFER_SEKUNDEN and self.beendet is None
@@ -461,7 +490,9 @@ class Speicher:
                     "beendet": None if self.beendet is None else {
                         **self.beendet, "vor_sekunden": round(time.time() - self.beendet["zeit"])},
                 },
-                "artikel": None if stand == artikel_stand else list(reversed(self.artikel.values())),
+                "artikel": None if seit is not None else list(reversed(self.artikel.values())),
+                "artikel_neu": [] if seit is None else [self.artikel[u] for u, s in self.geaendert.items() if s > seit],
+                "artikel_weg": [] if seit is None else [u for s, u in self.weg_protokoll if s > seit],
                 "artikel_stand": artikel_stand,
                 "fehler": list(reversed(self.fehler)),
                 "befehle": [kompakt(b) for b in reversed(self.befehle)],

@@ -134,13 +134,18 @@ function zeitpunktVor(sekunden) {
 
 async function laden() {
   try {
-    // Artikel kommen nur mit, wenn sich seit dem letzten Laden etwas geändert hat
+    // Nach dem ersten Laden kommen nur Änderungen (neu/geändert/gelöscht) – spart Datenvolumen bei Render
     const stand = daten?.artikel_stand ? `?artikel_stand=${encodeURIComponent(daten.artikel_stand)}` : "";
     const r = await fetch(`/api/daten${stand}`, { credentials: "same-origin" });
     if (r.status === 401) { location.reload(); return; }
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const neu = await r.json();
-    if (neu.artikel === null) neu.artikel = daten.artikel;
+    if (neu.artikel === null) {
+      const alle = new Map(daten.artikel.map((a) => [a.url, a]));
+      for (const url of neu.artikel_weg) alle.delete(url);
+      for (const a of neu.artikel_neu) alle.set(a.url, a);
+      neu.artikel = [...alle.values()];
+    }
     daten = neu;
     zeichneAlles();
   } catch (e) {
