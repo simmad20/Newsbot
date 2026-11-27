@@ -46,6 +46,7 @@ SITZUNG_SEKUNDEN = 14 * 24 * 3600
 ONLINE_PUFFER_SEKUNDEN = 15  # online = letzter Kontakt vor höchstens 2 Sync-Takten + Puffer
 STATIC = Path(__file__).resolve().parent / "static"
 SERVER_START = time.time()
+SERVER_ID = uuid.uuid4().hex[:8]  # Artikel-Stand nach einem Neustart nie mit einem alten verwechseln
 # Nur echte Push-Dienste der Browser (gleiche Liste prüft auch der Bot)
 ERLAUBTE_PUSH_HOSTS = (".googleapis.com", ".mozilla.com", ".mozaws.net", ".push.apple.com", ".notify.windows.com")
 
@@ -220,7 +221,7 @@ class ListenIn(BaseModel):
 
 class SyncIn(BaseModel):
     status: StatusIn
-    artikel: list[ArtikelIn] = Field(default_factory=list, max_length=600)
+    artikel: list[ArtikelIn] = Field(default_factory=list, max_length=1000)  # Neues (≤ 500) + ein Teil Älteres (≤ 400)
     fehler: list[FehlerIn] = Field(default_factory=list, max_length=300)
     erledigt: list[ErledigtIn] = Field(default_factory=list, max_length=100)
     entfernt: list[Annotated[str, Field(max_length=2000)]] = Field(default_factory=list, max_length=1000)  # vom Bot aufgeräumt
@@ -312,7 +313,8 @@ class BefehlIn(BaseModel):
 # --------------------------------------------------------------------------- Speicher (nur im RAM)
 
 class Speicher:
-    MAX_ARTIKEL = 400
+    MAX_ARTIKEL = 4000      # Bot: höchstens 3000 insgesamt, davon höchstens 300 nicht abgehakte
+    MAX_OFFEN = 400         # nicht abgehakte – darüber fallen die ältesten davon weg, nie abgehakte
     MAX_FEHLER = 150
     MAX_BEFEHLE = 25
 
@@ -328,16 +330,22 @@ class Speicher:
         self.hat_snapshot = False
         self.push_aenderungen: list[dict] = []
         self.listen: dict | None = None  # Quellen und Tags vom Bot
+        self.artikel_stand = 0  # zählt jede Änderung an den Artikeln – die Seite lädt sie nur dann neu
 
     def artikel_hinzufuegen(self, liste: list[ArtikelIn]) -> None:
         for a in liste:
             self.artikel.pop(a.url, None)
             self.artikel[a.url] = a.model_dump()
-        while len(self.artikel) > self.MAX_ARTIKEL:
+        offen = [u for u, x in self.artikel.items() if not x.get("angeschaut")]
+        for url in offen[:max(0, len(offen) - self.MAX_OFFEN)]:  # abgehakte nie zugunsten neuer verdrängen
+            del self.artikel[url]
+        while len(self.artikel) > self.MAX_ARTIKEL:  # Notbremse
             self.artikel.popitem(last=False)
 
     def sync(self, daten: SyncIn) -> dict:
         with self.lock:
+            if daten.snapshot or daten.artikel or daten.entfernt:
+                self.artikel_stand += 1
             self.letzter_kontakt = time.time()
             self.status = daten.status.model_dump()
             self.beendet = self.pruefung = None  # der Bot synchronisiert nur zwischen zwei Prüfungen
@@ -386,6 +394,7 @@ class Speicher:
             return self.angeschaut(b)
         with self.lock:
             if b.aktion == "offene_artikel_loeschen":  # gilt auf der Seite sofort; der Bot löscht sie dauerhaft
+                self.artikel_stand += 1
                 for url in [u for u, a in self.artikel.items() if not a.get("angeschaut")]:
                     del self.artikel[url]
             # Gleiche offene Steuer-Aktion nicht doppelt einreihen – nur den Wert aktualisieren.
@@ -412,6 +421,7 @@ class Speicher:
         bei schlafendem Bot nicht die Befehlsliste füllen und ältere verdrängen."""
         with self.lock:
             urls = list(dict.fromkeys(b.artikel))
+            self.artikel_stand += 1
             for url in urls:
                 if url in self.artikel:
                     self.artikel[url]["angeschaut"] = b.angeschaut
@@ -434,8 +444,11 @@ class Speicher:
             self.befehle = self.befehle[-self.MAX_BEFEHLE:]
             return kompakt(neu)
 
-    def ansicht(self) -> dict:
+    def ansicht(self, stand: str = "") -> dict:
+        """Alles für die Seite. Kennt die Seite den aktuellen Artikel-Stand schon, kommen die Artikel nicht noch
+        einmal mit ("artikel": null) – bei vielen abgehakten Artikeln spart das alle 10 Sekunden viel Datenvolumen."""
         with self.lock:
+            artikel_stand = f"{SERVER_ID}-{self.artikel_stand}"
             vor = None if self.letzter_kontakt is None else time.time() - self.letzter_kontakt
             takt = self.status["sync_sekunden"] if self.status else 30
             online = vor is not None and vor < 2 * takt + ONLINE_PUFFER_SEKUNDEN and self.beendet is None
@@ -448,7 +461,8 @@ class Speicher:
                     "beendet": None if self.beendet is None else {
                         **self.beendet, "vor_sekunden": round(time.time() - self.beendet["zeit"])},
                 },
-                "artikel": list(reversed(self.artikel.values())),
+                "artikel": None if stand == artikel_stand else list(reversed(self.artikel.values())),
+                "artikel_stand": artikel_stand,
                 "fehler": list(reversed(self.fehler)),
                 "befehle": [kompakt(b) for b in reversed(self.befehle)],
                 "listen": self.listen,
@@ -615,9 +629,9 @@ def gesund():
 # --------------------------------------------------------------------------- API für die Seite
 
 @app.get("/api/daten")
-def daten(request: Request):
+def daten(request: Request, artikel_stand: str = ""):
     nur_eingeloggt(request)
-    return speicher.ansicht()
+    return speicher.ansicht(artikel_stand[:40])
 
 
 async def lies_koerper(request: Request, grenze: int) -> bytes:
@@ -677,7 +691,7 @@ async def push_abo(request: Request):
 async def bot_sync(request: Request):
     nur_bot(request)  # zuerst prüfen, erst dann den Inhalt überhaupt lesen
     try:
-        daten = SyncIn.model_validate(await lies_json(request, 3_000_000))
+        daten = SyncIn.model_validate(await lies_json(request, 12_000_000))
     except ValueError as e:
         return JSONResponse({"detail": str(e)[:2000]}, status_code=422)
     return speicher.sync(daten)

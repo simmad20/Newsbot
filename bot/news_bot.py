@@ -63,7 +63,9 @@ SYNC_TIMEOUT = 90  # Render-Free braucht nach dem Schlafen ca. 1 Minute zum Aufw
 PAUSE_ZWISCHEN_ABRUFEN = 1.0
 GESEHEN_BEHALTEN_TAGE = 14
 MAX_ALTER_GRENZE = 168  # 7 Tage; muss unter GESEHEN_BEHALTEN_TAGE bleiben, sonst kämen alte Artikel doppelt
-VERLAUF_MAX = 300
+VERLAUF_OFFEN_MAX = 300  # so viele NICHT abgehakte Artikel behält der Bot höchstens (älteste fallen zuerst weg)
+VERLAUF_MAX = 3000       # Notbremse für alle zusammen – abgehakte fallen nur weg, wenn es mehr als das werden
+SNAPSHOT_STUECK = 400    # so viele Artikel pro Übertragung; ein großer Verlauf geht in mehreren Teilen zur Seite
 FEHLER_VERLAUF_MAX = 100
 FEED_PFADE = ["/rss", "/feed", "/rss.xml", "/feed.xml", "/atom.xml", "/index.xml"]
 TRACKING = re.compile(r"^(utm_\w*|fbclid|gclid|dclid|mc_cid|mc_eid|ref|ref_src|ito|xtor|wt_mc|ns_\w+)$", re.I)
@@ -84,7 +86,7 @@ STANDARD_EINSTELLUNGEN = {
     "discord_webhook": "", "discord_webhook_fehler": "",
     "zeitzone": "Europe/Vienna", "max_alter_stunden": 24, "intervall_minuten": 15,
     "nur_mit_tags": False, "max_meldungen_pro_lauf": 25,
-    "offene_artikel_tage": 7,  # nicht abgehakte Artikel nach so vielen Tagen löschen (0 = nie)
+    "offene_artikel_tage": 5,  # nicht abgehakte Artikel so viele Tage nach dem Fund löschen (0 = nie)
 }
 # Namen in config.toml sind englisch; die früheren deutschen Namen funktionieren weiter (englisch gewinnt).
 # Links: Name in config.toml, rechts: Name hier im Programm.
@@ -906,14 +908,33 @@ def merke_fuer_dashboard(state: dict, a: dict, gemeldet: bool) -> None:
         "weg": a.get("weg", "feed"),
         "gefunden_um": jetzt_utc().isoformat(),
     }
-    state["verlauf"] = (state["verlauf"] + [eintrag])[-VERLAUF_MAX:]
+    state["verlauf"].append(eintrag)
+    kuerze_verlauf(state)
     state["sync_artikel"] = (state["sync_artikel"] + [eintrag])[-500:]
 
 
+def kuerze_verlauf(state: dict) -> None:
+    """Obergrenzen für den Verlauf – abgehakte Artikel werden dabei nie zugunsten neuer verdrängt: Zu viele
+    NICHT abgehakte → die ältesten davon fallen weg. Nur wenn es insgesamt mehr als VERLAUF_MAX werden (Notbremse
+    für state.json und die Webseite), gehen auch die ältesten abgehakten."""
+    verlauf = state["verlauf"]
+    offen = [e for e in verlauf if not e.get("angeschaut")]
+    weg = {e["url"] for e in offen[:max(0, len(offen) - VERLAUF_OFFEN_MAX)]}
+    if len(verlauf) - len(weg) > VERLAUF_MAX:
+        rest = [e for e in verlauf if e["url"] not in weg]
+        weg |= {e["url"] for e in rest[:len(rest) - VERLAUF_MAX]}
+        log.warning("Mehr als %d gespeicherte Artikel – die ältesten (auch abgehakte) werden gelöscht.", VERLAUF_MAX)
+    if weg:
+        state["verlauf"] = [e for e in verlauf if e["url"] not in weg]
+        state["sync_artikel"] = [e for e in state["sync_artikel"] if e["url"] not in weg]
+        state["sync_entfernt"] = list(dict.fromkeys(state["sync_entfernt"] + list(weg)))[-1000:]
+
+
 def raeume_auf(cfg: dict, state: dict) -> int:
-    """Nicht abgehakte Artikel, die älter als offene_artikel_tage sind, aus dem Verlauf löschen – auch auf der
-    Webseite. Abgehakte bleiben. Sie kommen nicht als neu wieder: „gesehen“ hält 14 Tage, gemeldet wird
-    höchstens 7 Tage Altes."""
+    """Nicht abgehakte Artikel, die der Bot vor mehr als offene_artikel_tage Tagen gefunden hat, aus dem Verlauf
+    löschen – auch auf der Webseite. Abgehakte bleiben immer. Gezählt wird ab dem Fund (nicht ab der Veröffentlichung),
+    sonst verschwände ein Artikel, der erst spät entdeckt wurde, gleich wieder. Gelöschte kommen nicht als neu
+    wieder: „gesehen“ hält 14 Tage, gemeldet wird höchstens 7 Tage Altes."""
     tage = cfg["offene_artikel_tage"]
     if not tage:
         return 0
@@ -923,7 +944,7 @@ def raeume_auf(cfg: dict, state: dict) -> int:
         if e.get("angeschaut"):
             return False
         try:
-            zeit = datetime.fromisoformat(e.get("datum") or e["gefunden_um"])
+            zeit = datetime.fromisoformat(e.get("gefunden_um") or e["datum"])
         except (KeyError, TypeError, ValueError):
             return False  # ohne lesbares Datum lieber behalten
         if zeit.tzinfo is None:
@@ -1082,6 +1103,7 @@ _puls = {"kontakt": 0.0, "versuch": 0.0, "pruefung": None, "geaendert": False}
 _puls_lock = threading.Lock()
 _erster_sync = True  # nach dem Start schickt der Bot einmal seinen kompletten Stand
 _listen_gesendet: str | None = None  # Prüfsumme der Quellen/Tags, die das Dashboard schon kennt
+_nachschicken: list[str] = []  # ältere Artikel (Adressen), die nach einem großen Komplett-Stand noch zur Seite müssen
 _abgemeldet = False
 
 
@@ -1174,7 +1196,7 @@ def baue_listen(state: dict) -> tuple[dict | None, str | None]:
 
 def synchronisiere(cfg: dict, state: dict) -> list[dict]:
     """Schickt Status/Neues an das Dashboard und holt offene Befehle ab."""
-    global _erster_sync, _listen_gesendet
+    global _erster_sync, _listen_gesendet, _nachschicken
     d = cfg["dashboard"]
     if not d["url"]:
         return []
@@ -1182,12 +1204,12 @@ def synchronisiere(cfg: dict, state: dict) -> list[dict]:
     listen_daten, pruefsumme = baue_listen(state)
     if _erster_sync:
         # Kompletter Stand statt nur Neues – so übernimmt die Seite auch einen geleerten Bot.
-        nutzlast = {"status": baue_status(cfg, state), "artikel": state["verlauf"],
+        nutzlast = {"status": baue_status(cfg, state), "artikel": komplett_teil(state),
                     "fehler": state["fehler_verlauf"], "erledigt": state["sync_erledigt"][-100:], "snapshot": True}
     else:
         nutzlast = {
             "status": baue_status(cfg, state),
-            "artikel": state["sync_artikel"],
+            "artikel": nachschub(state) + state["sync_artikel"],
             "fehler": state["sync_fehler"],
             "erledigt": state["sync_erledigt"][-100:],
             "entfernt": state["sync_entfernt"],
@@ -1215,6 +1237,8 @@ def synchronisiere(cfg: dict, state: dict) -> list[dict]:
             return befehle
         merke_kontakt()
         _erster_sync = False
+        if not nutzlast["snapshot"]:
+            del _nachschicken[:SNAPSHOT_STUECK]  # dieser Teil ist angekommen
         if nutzlast["listen"] is not None:
             _listen_gesendet = pruefsumme
         state["sync_artikel"], state["sync_fehler"], state["sync_erledigt"], state["sync_entfernt"] = [], [], [], []
@@ -1225,7 +1249,7 @@ def synchronisiere(cfg: dict, state: dict) -> list[dict]:
         if antwort.get("snapshot_noetig") and not nutzlast["snapshot"]:
             # Render wurde neu gestartet und hat nichts mehr im Speicher → kompletten Verlauf schicken
             log.info("Dashboard ist leer (Neustart bei Render) – schicke kompletten Verlauf.")
-            nutzlast.update(status=baue_status(cfg, state), artikel=state["verlauf"],
+            nutzlast.update(status=baue_status(cfg, state), artikel=komplett_teil(state),
                             fehler=state["fehler_verlauf"], erledigt=[], snapshot=True, listen=listen_daten)
             continue
         if geraete_geaendert:
@@ -1235,6 +1259,24 @@ def synchronisiere(cfg: dict, state: dict) -> list[dict]:
             continue
         break
     return befehle
+
+
+def komplett_teil(state: dict) -> list[dict]:
+    """Für einen Komplett-Stand: die neuesten Artikel gleich, ältere danach in Teilen (nachschub) – so bleibt jede
+    Übertragung klein, auch wenn sich viele abgehakte Artikel angesammelt haben."""
+    global _nachschicken
+    _nachschicken = [e["url"] for e in state["verlauf"][:-SNAPSHOT_STUECK]]
+    if _nachschicken:
+        log.info("%d ältere Artikel folgen in Teilen zu je %d.", len(_nachschicken), SNAPSHOT_STUECK)
+    return state["verlauf"][-SNAPSHOT_STUECK:]
+
+
+def nachschub(state: dict) -> list[dict]:
+    """Nächster Teil der älteren Artikel nach einem Komplett-Stand (nur, was noch im Verlauf steht)."""
+    if not _nachschicken:
+        return []
+    im_verlauf = {e["url"]: e for e in state["verlauf"]}
+    return [im_verlauf[u] for u in _nachschicken[:SNAPSHOT_STUECK] if u in im_verlauf]
 
 
 def fuehre_befehl_aus(b: dict, cfg: dict, state: dict) -> str:

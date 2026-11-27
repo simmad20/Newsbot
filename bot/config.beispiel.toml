@@ -33,7 +33,8 @@ interval_minutes = 15            # wie oft geprüft wird: 5–240
 max_age_hours = 48               # wie alt ein Artikel höchstens sein darf: 1–168
 only_with_tags = false           # true = Benachrichtigung nur für Artikel mit Tags
 max_notifications_per_run = 25   # höchstens so viele Benachrichtigungen pro Prüfung – der Rest kommt bei der nächsten
-unchecked_article_days = 7       # nicht abgehakte Artikel nach so vielen Tagen löschen (0 = nie, höchstens 60)
+unchecked_article_days = 5       # nicht abgehakte Artikel so viele Tage nach dem Fund löschen (0 = nie, höchstens 60);
+                                 # abgehakte werden nie gelöscht
 
 # ---- Webseite auf Render
 [dashboard]

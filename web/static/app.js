@@ -134,10 +134,14 @@ function zeitpunktVor(sekunden) {
 
 async function laden() {
   try {
-    const r = await fetch("/api/daten", { credentials: "same-origin" });
+    // Artikel kommen nur mit, wenn sich seit dem letzten Laden etwas geändert hat
+    const stand = daten?.artikel_stand ? `?artikel_stand=${encodeURIComponent(daten.artikel_stand)}` : "";
+    const r = await fetch(`/api/daten${stand}`, { credentials: "same-origin" });
     if (r.status === 401) { location.reload(); return; }
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    daten = await r.json();
+    const neu = await r.json();
+    if (neu.artikel === null) neu.artikel = daten.artikel;
+    daten = neu;
     zeichneAlles();
   } catch (e) {
     setzeStatus("offline", "Seite nicht erreichbar", "Keine Verbindung", "Die Webseite antwortet gerade nicht.",
