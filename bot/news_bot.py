@@ -78,7 +78,8 @@ WEG_NEU_SUCHEN_STUNDEN = 24      # ohne Feed: einmal am Tag schauen, ob es inzwi
 WEGE = {"feed": "RSS-Feed", "news_sitemap": "News-Sitemap", "sitemap": "Sitemap", "startseite": "Startseite"}
 ERLAUBTE_AKTIONEN = {"jetzt_pruefen", "pausieren", "fortsetzen", "intervall", "max_alter", "testnachricht",
                      "quellen_hinzufuegen", "quellen_entfernen", "tag_hinzufuegen", "tag_entfernen",
-                     "quellen_importieren", "tags_importieren", "angeschaut"}
+                     "quellen_importieren", "tags_importieren", "angeschaut",
+                     "quellen_alle_loeschen", "tags_alle_loeschen", "offene_artikel_loeschen"}
 STANDARD_EINSTELLUNGEN = {
     "discord_webhook": "", "discord_webhook_fehler": "",
     "zeitzone": "Europe/Vienna", "max_alter_stunden": 24, "intervall_minuten": 15,
@@ -939,6 +940,19 @@ def raeume_auf(cfg: dict, state: dict) -> int:
     return len(weg)
 
 
+def loesche_offene_artikel(state: dict) -> str:
+    """Alle nicht angeschauten Artikel löschen (Knopf auf der Webseite). Abgehakte bleiben. Sie kommen nicht als neu
+    wieder – „gesehen“ bleibt."""
+    weg = [e["url"] for e in state["verlauf"] if not e.get("angeschaut")]
+    if not weg:
+        return "keine nicht angeschauten Artikel – nichts gelöscht"
+    entfernt = set(weg)
+    state["verlauf"] = [e for e in state["verlauf"] if e["url"] not in entfernt]
+    state["sync_artikel"] = [e for e in state["sync_artikel"] if e["url"] not in entfernt]
+    state["sync_entfernt"] = list(dict.fromkeys(state["sync_entfernt"] + weg))[-1000:]
+    return f"{len(weg)} nicht angeschaute Artikel gelöscht – abgehakte bleiben"
+
+
 def merke_gesehen(state: dict, a: dict) -> None:
     for s in a["schluessel"]:
         state["gesehen"][s] = jetzt_utc().isoformat()
@@ -1272,6 +1286,8 @@ def fuehre_befehl_aus(b: dict, cfg: dict, state: dict) -> str:
                 eintrag["angeschaut"] = wert
                 n += 1
         return f"{n} Artikel als {'angeschaut' if wert else 'nicht angeschaut'} markiert"
+    if aktion == "offene_artikel_loeschen":
+        return loesche_offene_artikel(state)
     # Quellen und Tags: listen.py prüft jeden Wert selbst, bevor etwas in eine Datei geschrieben wird.
     try:
         if aktion in ("quellen_hinzufuegen", "quellen_entfernen", "quellen_importieren"):
@@ -1286,6 +1302,12 @@ def fuehre_befehl_aus(b: dict, cfg: dict, state: dict) -> str:
             return listen.aendere_tags(TAGS_DATEI, aktion == "tag_hinzufuegen", b.get("tag"), b.get("beschreibung"))
         if aktion == "tags_importieren":
             return listen.importiere_tags(TAGS_DATEI, b.get("tags"))
+        if aktion == "quellen_alle_loeschen":
+            ergebnis = listen.leere_liste(QUELLEN_DATEI, listen.QUELLEN_KOPF, "Quellen-Einträge")
+            state["quellen_heute"] = 0
+            return ergebnis
+        if aktion == "tags_alle_loeschen":
+            return listen.leere_liste(TAGS_DATEI, listen.TAGS_KOPF, "Tags")
     except listen.DateiGesperrt as e:
         return str(e)
     except OSError as e:

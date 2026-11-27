@@ -147,6 +147,7 @@ function zeichneQuellen() {
   const quellen = daten.listen ? daten.listen.quellen : null;
   const anzahlQuellen = quellen ? new Set(quellen.map((q) => q.url)).size : 0;
   $("zahl-quellen").textContent = anzahlQuellen ? String(anzahlQuellen) : "";
+  $("quellen-alle-loeschen").hidden = !(quellen && quellen.length);
   meldeErgebnis("quellen");
   const suche = klein($("quellen-suche").value.trim());
   const heute = heutigerTag();
@@ -283,6 +284,7 @@ function kiHinweis() {
 
 function zeichneTags() {
   const tags = daten.listen ? daten.listen.tags : null;
+  $("tags-alle-loeschen").hidden = !(tags && tags.length);
   $("zahl-tags").textContent = tags && tags.length ? String(tags.length) : "";
   meldeErgebnis("tags");
   const suche = klein($("tags-suche").value.trim());
@@ -716,6 +718,16 @@ async function verarbeiteDatei(datei) {
   } catch (e) {
     fehler.textContent = e.message;
   }
+}
+
+// ---------------------------------------------------------------- Alle löschen (Quellen / Tags)
+
+for (const [bereich, aktion, was] of [["quellen", "quellen_alle_loeschen", "Quellen-Einträge"], ["tags", "tags_alle_loeschen", "Tags"]]) {
+  $(`${bereich}-alle-loeschen`).addEventListener("click", (e) => {
+    const n = (daten?.listen?.[bereich] || []).length;
+    if (!n || !confirm(`Wirklich alle ${n} ${was} löschen?\n\nDer Bot sichert die Liste vorher als ${bereich}.vorher.csv.`)) return;
+    listenBefehl(bereich, { aktion }, e.currentTarget);
+  });
 }
 
 document.querySelectorAll("[data-import]").forEach((knopf) => knopf.addEventListener("click", () => {

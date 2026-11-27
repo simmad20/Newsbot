@@ -230,10 +230,12 @@ class SyncIn(BaseModel):
 
 Aktion = Literal["jetzt_pruefen", "pausieren", "fortsetzen", "intervall", "max_alter", "testnachricht",
                  "quellen_hinzufuegen", "quellen_entfernen", "tag_hinzufuegen", "tag_entfernen",
-                 "quellen_importieren", "tags_importieren", "angeschaut"]
+                 "quellen_importieren", "tags_importieren", "angeschaut",
+                 "quellen_alle_loeschen", "tags_alle_loeschen", "offene_artikel_loeschen"]
 QUELLEN_AKTIONEN = {"quellen_hinzufuegen", "quellen_entfernen"}
 TAG_AKTIONEN = {"tag_hinzufuegen", "tag_entfernen"}
-LISTEN_AKTIONEN = QUELLEN_AKTIONEN | TAG_AKTIONEN | {"quellen_importieren", "tags_importieren"}
+LISTEN_AKTIONEN = QUELLEN_AKTIONEN | TAG_AKTIONEN | {"quellen_importieren", "tags_importieren",
+                                                       "quellen_alle_loeschen", "tags_alle_loeschen"}
 MAX_ANGESCHAUT = 400  # so viele Artikel hält der Server höchstens
 
 
@@ -383,6 +385,9 @@ class Speicher:
         if b.aktion == "angeschaut":
             return self.angeschaut(b)
         with self.lock:
+            if b.aktion == "offene_artikel_loeschen":  # gilt auf der Seite sofort; der Bot löscht sie dauerhaft
+                for url in [u for u, a in self.artikel.items() if not a.get("angeschaut")]:
+                    del self.artikel[url]
             # Gleiche offene Steuer-Aktion nicht doppelt einreihen – nur den Wert aktualisieren.
             # (Quellen- und Tag-Befehle haben jeweils eigenen Inhalt und bleiben alle erhalten.)
             if b.aktion not in LISTEN_AKTIONEN:

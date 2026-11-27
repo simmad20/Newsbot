@@ -15,6 +15,9 @@ const AKTIONS_NAMEN = {
   intervall: "Intervall ändern",
   max_alter: "Höchstalter ändern",
   testnachricht: "Testbenachrichtigung",
+  quellen_alle_loeschen: "Alle Quellen löschen",
+  tags_alle_loeschen: "Alle Tags löschen",
+  offene_artikel_loeschen: "Alle nicht angeschauten Artikel löschen",
 };
 const TAGE = [
   ["montag", "Montag", "Mo"], ["dienstag", "Dienstag", "Di"], ["mittwoch", "Mittwoch", "Mi"],
@@ -352,6 +355,8 @@ function zeichneTicker() {
   const alleKnopf = $("alle-abhaken");
   alleKnopf.hidden = gelesen !== "offen" || !artikel.length;
   alleKnopf.textContent = `Alle ${artikel.length} als angeschaut markieren`;
+  $("offene-loeschen").hidden = !offenZahl;
+  $("offene-loeschen").textContent = `Alle ${offenZahl} nicht angeschauten löschen`;
   document.querySelectorAll("[data-ansicht]").forEach((k) => k.setAttribute("aria-pressed", String(k.dataset.ansicht === ansicht)));
 
   // Nur neu zeichnen, wenn sich etwas geändert hat (sonst springen Fokus und Auswahl alle 10 Sekunden)
@@ -547,6 +552,23 @@ $("alle-abhaken").addEventListener("click", () => {
   const urls = gefilterteArtikel().map((a) => a.url);
   if (urls.length && confirm(`${anzahl(urls.length, "Artikel", "Artikel")} als angeschaut markieren?`)) {
     setzeAngeschaut(urls, true, `${anzahl(urls.length, "Artikel", "Artikel")} abgehakt.`);
+  }
+});
+
+$("offene-loeschen").addEventListener("click", async (e) => {
+  const offen = daten.artikel.filter((a) => !istAngeschaut(a)).length;
+  if (!offen || !confirm(`Wirklich alle ${anzahl(offen, "nicht angeschauten Artikel", "nicht angeschauten Artikel")} löschen?\n\n`
+    + "Abgehakte Artikel bleiben. Gelöschte kommen nicht als neu wieder.")) return;
+  const knopf = e.currentTarget;
+  knopf.disabled = true;
+  try {
+    await schickeBefehl({ aktion: "offene_artikel_loeschen" });
+    $("artikel-rueck").textContent = gesendetText(AKTIONS_NAMEN.offene_artikel_loeschen);
+    laden();
+  } catch (fehler) {
+    $("artikel-rueck").textContent = `Nicht gesendet: ${fehler.message}`;
+  } finally {
+    knopf.disabled = false;
   }
 });
 

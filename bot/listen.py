@@ -226,6 +226,18 @@ def _schreibe_quellen(datei: Path, zeilen: list[list[str]]) -> None:
     schreibe_csv(datei, QUELLEN_KOPF, zeilen)
 
 
+def leere_liste(datei: Path, kopf: list[str], was: str) -> str:
+    """Alle Einträge löschen (Befehl „Alle löschen“ von der Webseite). Vorher wird die Datei als
+    <name>.vorher.csv gesichert – ein versehentlicher Klick lässt sich so rückgängig machen."""
+    zeilen = lies_csv(datei, kopf) if datei.exists() else []
+    if not zeilen:
+        return f"keine {was} vorhanden – nichts gelöscht"
+    sicherung = datei.with_name(datei.stem + ".vorher.csv")
+    sicherung.write_bytes(datei.read_bytes())
+    schreibe_csv(datei, kopf, [])
+    return f"alle {len(zeilen)} {was} gelöscht (Sicherung: {sicherung.name})"
+
+
 def _import_text(neu: str, doppelt: int, ungueltig: int, zu_viel: int) -> str:
     teile = [neu]
     if doppelt:

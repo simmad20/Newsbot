@@ -719,6 +719,8 @@ code { padding: 1px 5px; border-radius: 4px; background: var(--chip); color: var
 .symbol-knopf.gefahr:hover { color: var(--rot); background: var(--fehler-grund); }
 .symbol-knopf:disabled { opacity: 0.4; cursor: wait; }
 .link-knopf.gefahr { color: var(--fehler); }
+.knopf.gefahr { color: var(--fehler); border-color: color-mix(in srgb, var(--fehler) 45%, transparent); }
+.knopf.gefahr:hover { background: var(--fehler-grund); }
 
 .leer-kasten {
   margin-top: 16px;

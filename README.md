@@ -414,6 +414,11 @@ Seite. Gibt es für das Ressort einen eigenen Feed, trag besser den ein.
 
 ## Gut zu wissen
 
+- **Aufräumen:** „Alle löschen“ im Reiter **Quellen** bzw. **Tags** leert die ganze Liste auf einmal
+  (der Bot sichert sie vorher als `quellen.vorher.csv` bzw. `tags.vorher.csv` – zurück geht es per
+  „Datei importieren“ oder durch Umbenennen). Im Reiter **Artikel** löscht „Alle nicht angeschauten
+  löschen“ jeden noch nicht abgehakten Artikel; abgehakte bleiben, gelöschte kommen nicht als neu wieder.
+
 - **Neu anfangen:** Bot beenden, dann im Ordner `bot`: `python news_bot.py --zuruecksetzen`. Er
   vergisst alle **noch nicht angeschauten** Artikel und die Fehler. **Abgehakte Artikel bleiben** (und
   kommen auch nicht als neu wieder), ebenso Quellen, Tags, `config.toml`, die Geräte für
